@@ -161,8 +161,12 @@ def index():
     results   = None
     form_data = {}
     error     = None
+    loaded_case_name = ''
+    loaded_case_desc = ''
 
     if request.method == 'POST':
+        loaded_case_name = request.form.get('loaded_case_name', '')
+        loaded_case_desc = request.form.get('loaded_case_desc', '')
         try:
             g = float(request.form['glucose'])
             inputs = {
@@ -224,7 +228,10 @@ def index():
     return render_template('index.html',
                            results=results,
                            form_data=form_data,
-                           error=error)
+                           error=error,
+                           loaded_case_name=loaded_case_name,
+                           loaded_case_desc=loaded_case_desc)
+
 
 
 if __name__ == '__main__':

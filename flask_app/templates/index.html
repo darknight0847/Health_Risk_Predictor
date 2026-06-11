@@ -229,6 +229,11 @@
       -webkit-appearance: none;
     }
     .input-wrap select { padding-right: 0.85rem; }
+    .input-wrap select option {
+      background-color: #080f22;
+      color: var(--text);
+    }
+
 
     .input-wrap input::placeholder { color: var(--muted); }
 
@@ -270,6 +275,20 @@
     .submit-row {
       display: flex; align-items: center; justify-content: center;
       gap: 1.5rem; margin-top: 1.75rem; flex-wrap: wrap;
+    }
+    .bottom-action-panel {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr;
+      gap: 1.5rem;
+      margin-top: 1.75rem;
+      border-top: 1px solid var(--border);
+      padding-top: 1.5rem;
+      align-items: stretch;
+    }
+    @media (max-width: 768px) {
+      .bottom-action-panel {
+        grid-template-columns: 1fr;
+      }
     }
     .btn-predict {
       display: inline-flex; align-items: center; gap: 0.7rem;
@@ -524,6 +543,8 @@
       </div>
 
       <form method="POST" id="predictForm" onsubmit="showLoading()">
+        <input type="hidden" name="loaded_case_name" id="loadedCaseName" value="{{ loaded_case_name or '' }}">
+        <input type="hidden" name="loaded_case_desc" id="loadedCaseDesc" value="{{ loaded_case_desc or '' }}">
         <div class="sections-grid">
 
           <!-- Demographics -->
@@ -735,18 +756,38 @@
 
         </div><!-- sections-grid -->
 
-        <div class="submit-row">
-          <button type="button" class="btn-autofill" onclick="fillSampleData('healthy')">
-            <span>🟢</span> Autofill (Healthy)
-          </button>
-          <button type="button" class="btn-autofill" onclick="fillSampleData('highRisk')">
-            <span>🔴</span> Autofill (High Risk)
-          </button>
-          <button type="submit" class="btn-predict" id="predictBtn">
-            <span style="font-size:1.1rem;">⚡</span>
-            Predict Risk &amp; Explain with SHAP
-          </button>
-          <span class="submit-note">⏱ ~30–60 seconds · SHAP analysis runs on all 3 models</span>
+        <!-- Bottom Action Panel (Case Studies + Predict Button Side-by-Side) -->
+        <div class="bottom-action-panel">
+          
+          <!-- Case Studies Block -->
+          <div style="padding: 1rem; background: rgba(0,212,255,0.02); border: 1px dashed var(--border); border-radius: 12px; display: flex; flex-direction: column; justify-content: space-between; gap: 0.75rem;">
+            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;">
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <span style="font-size:1.1rem;">🧪</span>
+                <strong style="font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent);">Interactive Case Studies</strong>
+              </div>
+              <button type="button" class="btn-autofill" style="padding: 0.45rem 1.1rem; font-size: 0.75rem;" onclick="loadRandomCase()">
+                🎲 Load Random Case
+              </button>
+            </div>
+            <div id="caseStudyExpectation" style="padding: 0.8rem 1rem; background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 8px; font-size: 0.8rem; color: var(--muted2); line-height: 1.5; border-left: 3px solid var(--accent); flex: 1; display: flex; flex-direction: column; justify-content: center;">
+              {% if loaded_case_name and loaded_case_desc %}
+                <strong>Loaded Scenario:</strong> {{ loaded_case_name }}<br><strong>Clinical Expectation:</strong> {{ loaded_case_desc | safe }}
+              {% else %}
+                Click <strong>Load Random Case</strong> to load a random clinical profile and see expected model behaviors.
+              {% endif %}
+            </div>
+          </div>
+
+          <!-- Submit Button Block -->
+          <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.8rem; padding: 1rem 0;">
+            <button type="submit" class="btn-predict" id="predictBtn" style="width: 100%; justify-content: center;">
+              <span style="font-size:1.1rem;">⚡</span>
+              Predict Risk &amp; Explain with SHAP
+            </button>
+            <span class="submit-note" style="text-align: center;">⏱ ~30–60 seconds · SHAP analysis runs on all 3 models</span>
+          </div>
+
         </div>
       </form>
     </div><!-- form-card -->
@@ -937,64 +978,143 @@
       hint.textContent = msg + '  (' + hint.dataset.orig.trim() + ')';
     }
 
+    /* ── Case Studies Data (20 Distinct Scenarios) ─────────────────────────── */
+    const caseStudies = [
+      {
+        name: "Case 1: Young Healthy Athlete (All Low)",
+        desc: "Optimal biomarkers. <strong>Expected Risk:</strong> Diabetes < 2% (ideal < 35%), Heart < 1% (ideal < 15%), Liver < 3% (ideal < 10%). All indicators should be green.",
+        data: { age: 25, gender: "1", bmi: 22.0, waist: 80, sys_bp: 112, cholesterol: 160, glucose: 88, acr: 5.0, albumin: 5.0, alt: 22, ast: 20, ggt: 24, alp: 65, bilirubin: 0.6, serum_albumin: 4.5 }
+      },
+      {
+        name: "Case 2: Classic Type-2 Diabetic (Diabetes Critical)",
+        desc: "High fasting glucose (240 mg/dL), abdominal obesity (125 cm), and kidney strain (ACR 90). <strong>Expected Risk:</strong> Diabetes > 95% (Critical Risk, red), Heart ~7% (Low/Mod), Liver ~9% (Mod).",
+        data: { age: 58, gender: "1", bmi: 37.0, waist: 125, sys_bp: 138, cholesterol: 210, glucose: 240, acr: 90.0, albumin: 120.0, alt: 28, ast: 25, ggt: 32, alp: 70, bilirubin: 0.8, serum_albumin: 4.1 }
+      },
+      {
+        name: "Case 3: High Cardiac Risk Elder Male (Heart Critical)",
+        desc: "70yo male, severe hypertension (158 mmHg), high cholesterol (295 mg/dL), and kidney strain (ACR 150). <strong>Expected Risk:</strong> Heart > 35% (Critical Risk, red), Diabetes ~45% (High Risk), Liver ~8% (Mod).",
+        data: { age: 70, gender: "1", bmi: 31.0, waist: 128, sys_bp: 158, cholesterol: 295, glucose: 105, acr: 150.0, albumin: 200.0, alt: 27, ast: 24, ggt: 29, alp: 68, bilirubin: 0.7, serum_albumin: 4.0 }
+      },
+      {
+        name: "Case 4: Severe Liver Injury / Cirrhosis (Liver Critical)",
+        desc: "Extremely low serum albumin (2.5 g/dL), high bilirubin (3.2 mg/dL), and elevated liver enzymes (ALT 85, AST 98). <strong>Expected Risk:</strong> Liver > 40% (Critical Risk, red), Diabetes ~10% (Mod), Heart ~2% (Low).",
+        data: { age: 52, gender: "2", bmi: 24.5, waist: 88, sys_bp: 118, cholesterol: 185, glucose: 95, acr: 12.0, albumin: 15.0, alt: 85, ast: 98, ggt: 145, alp: 195, bilirubin: 3.2, serum_albumin: 2.5 }
+      },
+      {
+        name: "Case 5: Borderline Metabolic Syndrome (All Moderate)",
+        desc: "Elevated glucose (115), blood pressure (132), and abdominal waist size (102). <strong>Expected Risk:</strong> Diabetes ~8% (Moderate), Heart ~3% (Low/Mod), Liver ~6% (Mod). All models will show slightly elevated risk.",
+        data: { age: 48, gender: "1", bmi: 29.5, waist: 102, sys_bp: 132, cholesterol: 215, glucose: 115, acr: 25.0, albumin: 28.0, alt: 35, ast: 30, ggt: 45, alp: 92, bilirubin: 1.0, serum_albumin: 3.9 }
+      },
+      {
+        name: "Case 6: Healthy Elderly Female (Low/Moderate)",
+        desc: "Advanced age (75yo) but normal lab results. <strong>Expected Risk:</strong> Heart ~7% (Moderate due to age baseline), Diabetes ~6% (Low/Mod), Liver ~3% (Low). Highlights how age naturally increases risk thresholds.",
+        data: { age: 75, gender: "2", bmi: 23.0, waist: 82, sys_bp: 122, cholesterol: 190, glucose: 94, acr: 10.0, albumin: 12.0, alt: 20, ast: 21, ggt: 18, alp: 72, bilirubin: 0.7, serum_albumin: 4.2 }
+      },
+      {
+        name: "Case 7: Severe Alcoholic Hepatitis (Liver High)",
+        desc: "Extremely high GGT (260 U/L), high AST (120 U/L) exceeding ALT (48 U/L), and elevated Bilirubin (1.9). <strong>Expected Risk:</strong> Liver > 20% (High Risk), Diabetes < 2% (Low), Heart < 1% (Low).",
+        data: { age: 45, gender: "1", bmi: 26.0, waist: 92, sys_bp: 120, cholesterol: 170, glucose: 90, acr: 8.0, albumin: 10.0, alt: 48, ast: 120, ggt: 260, alp: 105, bilirubin: 1.9, serum_albumin: 3.5 }
+      },
+      {
+        name: "Case 8: Pre-diabetic Middle-aged Adult (Diabetes Moderate)",
+        desc: "Borderline fasting glucose (118) and high BMI (27.5). <strong>Expected Risk:</strong> Diabetes ~12% (Moderate), Heart ~1.5% (Low), Liver ~5% (Low/Mod).",
+        data: { age: 50, gender: "2", bmi: 27.5, waist: 94, sys_bp: 124, cholesterol: 188, glucose: 118, acr: 15.0, albumin: 18.0, alt: 22, ast: 20, ggt: 22, alp: 75, bilirubin: 0.6, serum_albumin: 4.3 }
+      },
+      {
+        name: "Case 9: Geriatric Multi-Risk (All High/Critical)",
+        desc: "80yo female with severe obesity, diabetic glucose (165), high BP (165), high cholesterol (280), and kidney/liver distress. <strong>Expected Risk:</strong> Diabetes > 80% (Critical), Heart > 20% (Critical), Liver > 15% (Critical).",
+        data: { age: 80, gender: "2", bmi: 32.5, waist: 115, sys_bp: 165, cholesterol: 280, glucose: 165, acr: 180.0, albumin: 220.0, alt: 45, ast: 42, ggt: 68, alp: 130, bilirubin: 1.5, serum_albumin: 3.3 }
+      },
+      {
+        name: "Case 10: Extremely Healthy Teenager (All Very Low)",
+        desc: "Age 18, optimal vitals, clean liver panels. <strong>Expected Risk:</strong> Risks near 0% across all models. Demonstrates the lower bounds of the model's calibration.",
+        data: { age: 18, gender: "1", bmi: 20.5, waist: 74, sys_bp: 108, cholesterol: 145, glucose: 82, acr: 3.0, albumin: 4.0, alt: 15, ast: 18, ggt: 12, alp: 58, bilirubin: 0.5, serum_albumin: 4.7 }
+      },
+      {
+        name: "Case 11: Isolated Severe Hypertension (Heart High)",
+        desc: "60yo male, systolic BP is 175 mmHg, but all other blood panels are completely normal. <strong>Expected Risk:</strong> Heart ~15% (High Risk), Diabetes ~5% (Low), Liver ~5% (Low/Mod).",
+        data: { age: 60, gender: "1", bmi: 24.0, waist: 88, sys_bp: 175, cholesterol: 180, glucose: 92, acr: 12.0, albumin: 15.0, alt: 20, ast: 19, ggt: 20, alp: 70, bilirubin: 0.6, serum_albumin: 4.2 }
+      },
+      {
+        name: "Case 12: Familial Hypercholesterolemia (Heart High/Mod)",
+        desc: "Extremely high total cholesterol (350 mg/dL), normal blood pressure and glucose. <strong>Expected Risk:</strong> Heart > 10% (High Risk due to lipid overload), Diabetes < 1%, Liver < 2%.",
+        data: { age: 42, gender: "2", bmi: 22.8, waist: 80, sys_bp: 116, cholesterol: 350, glucose: 87, acr: 6.0, albumin: 8.0, alt: 22, ast: 21, ggt: 15, alp: 62, bilirubin: 0.7, serum_albumin: 4.4 }
+      },
+      {
+        name: "Case 13: Biliary Tree Obstruction (Liver High)",
+        desc: "Highly elevated Alkaline Phosphatase (ALP 380) and Bilirubin (2.8 mg/dL) indicative of bile duct obstruction. <strong>Expected Risk:</strong> Liver > 25% (High Risk), Diabetes < 3%, Heart < 1%.",
+        data: { age: 55, gender: "2", bmi: 25.0, waist: 86, sys_bp: 120, cholesterol: 195, glucose: 95, acr: 10.0, albumin: 12.0, alt: 58, ast: 52, ggt: 110, alp: 380, bilirubin: 2.8, serum_albumin: 3.8 }
+      },
+      {
+        name: "Case 14: Diabetic Nephropathy Screen (Diabetes & Heart High)",
+        desc: "Glucose is 140 and urine albumin leaks are massive (ACR 320, Urine Albumin 400). <strong>Expected Risk:</strong> Diabetes > 65% (Critical), Heart > 18% (Critical), Liver ~8% (Mod).",
+        data: { age: 64, gender: "1", bmi: 28.5, waist: 104, sys_bp: 142, cholesterol: 225, glucose: 140, acr: 320.0, albumin: 400.0, alt: 32, ast: 28, ggt: 35, alp: 88, bilirubin: 0.9, serum_albumin: 3.7 }
+      },
+      {
+        name: "Case 15: Underweight Healthy Adult (All Low)",
+        desc: "Low body weight (BMI 17.5) and optimal labs. <strong>Expected Risk:</strong> All risks < 2%. Shows that underweight status is correctly mapped to low metabolic disease risk.",
+        data: { age: 30, gender: "2", bmi: 17.5, waist: 68, sys_bp: 105, cholesterol: 155, glucose: 84, acr: 4.5, albumin: 5.0, alt: 18, ast: 17, ggt: 14, alp: 60, bilirubin: 0.5, serum_albumin: 4.6 }
+      },
+      {
+        name: "Case 16: Non-Alcoholic Fatty Liver (NAFLD) (Liver High/Mod)",
+        desc: "Obesity (BMI 34) combined with elevated ALT/AST (78/65) and glucose (110). <strong>Expected Risk:</strong> Liver > 16% (High Risk), Diabetes ~10% (Mod), Heart ~4% (Low/Mod).",
+        data: { age: 39, gender: "1", bmi: 34.0, waist: 110, sys_bp: 128, cholesterol: 210, glucose: 110, acr: 15.0, albumin: 20.0, alt: 78, ast: 65, ggt: 55, alp: 95, bilirubin: 1.1, serum_albumin: 4.1 }
+      },
+      {
+        name: "Case 17: Obese Male with Normal Blood Pressure (Diabetes Moderate)",
+        desc: "Severe abdominal obesity (waist 118, BMI 33.5) but normal blood pressure and lipids. <strong>Expected Risk:</strong> Diabetes ~15% (Moderate due to adiposity), Heart < 3%, Liver ~6% (Mod).",
+        data: { age: 36, gender: "1", bmi: 33.5, waist: 118, sys_bp: 115, cholesterol: 165, glucose: 95, acr: 7.0, albumin: 8.0, alt: 25, ast: 22, ggt: 20, alp: 70, bilirubin: 0.6, serum_albumin: 4.4 }
+      },
+      {
+        name: "Case 18: Severe Fasting Hyperglycemia (Diabetes Critical)",
+        desc: "Younger age (40yo) but extremely high fasting glucose (295 mg/dL). <strong>Expected Risk:</strong> Diabetes > 98% (Critical Risk, red), Heart ~2% (Low), Liver ~4% (Low). Demonstrates glucose dominance in Diabetes model.",
+        data: { age: 40, gender: "2", bmi: 26.5, waist: 90, sys_bp: 122, cholesterol: 190, glucose: 295, acr: 25.0, albumin: 30.0, alt: 28, ast: 24, ggt: 22, alp: 78, bilirubin: 0.7, serum_albumin: 4.3 }
+      },
+      {
+        name: "Case 19: Biliary Cirrhosis Screen (Liver High)",
+        desc: "67yo female with low serum albumin (2.9) and high bilirubin (2.5), suggesting chronic liver damage. <strong>Expected Risk:</strong> Liver > 28% (High Risk), Diabetes ~8% (Mod), Heart ~4% (Low/Mod).",
+        data: { age: 67, gender: "2", bmi: 25.0, waist: 88, sys_bp: 130, cholesterol: 230, glucose: 102, acr: 35.0, albumin: 50.0, alt: 52, ast: 48, ggt: 85, alp: 170, bilirubin: 2.5, serum_albumin: 2.9 }
+      },
+      {
+        name: "Case 20: Average Fit Adult (All Low)",
+        desc: "Normal reference parameters for a 38yo female. <strong>Expected Risk:</strong> Diabetes < 3%, Heart < 1.5%, Liver < 3%. All systems operate at baseline.",
+        data: { age: 38, gender: "2", bmi: 23.8, waist: 82, sys_bp: 118, cholesterol: 185, glucose: 90, acr: 6.0, albumin: 7.0, alt: 21, ast: 20, ggt: 18, alp: 66, bilirubin: 0.6, serum_albumin: 4.3 }
+      }
+    ];
+
+    function loadRandomCase() {
+      const idx = Math.floor(Math.random() * caseStudies.length);
+      const caseData = caseStudies[idx];
+      if (!caseData) return;
+
+      const cleanedName = caseData.name.replace(/^Case \d+:\s*/, '');
+      document.getElementById('caseStudyExpectation').innerHTML = 
+        `<strong>Loaded Scenario:</strong> ${cleanedName}<br><strong>Clinical Expectation:</strong> ${caseData.desc}`;
+
+      // Save state to hidden inputs for form submission persistence
+      document.getElementById('loadedCaseName').value = cleanedName;
+      document.getElementById('loadedCaseDesc').value = caseData.desc;
+
+      for (const [id, value] of Object.entries(caseData.data)) {
+        const el = document.getElementById(id);
+        if (el) {
+          el.value = value;
+          // Dispatch input event to trigger color-range validation script
+          if (el.tagName === 'INPUT' && (el.oninput || el.getAttribute('oninput'))) {
+            el.dispatchEvent(new Event('input'));
+          } else if (el.tagName === 'SELECT') {
+            el.value = value;
+          }
+        }
+      }
+    }
+
     /* ── Loading overlay ─────────────────────────────────────────────────── */
     function showLoading() {
       document.getElementById('loadingOverlay').classList.add('active');
     }
 
-    /* ── Autofill Helper ─────────────────────────────────────────────────── */
-    function fillSampleData(type) {
-      const data = {
-        healthy: {
-          age: 35,
-          gender: "1",
-          bmi: 22.5,
-          waist: 84.0,
-          sys_bp: 115,
-          cholesterol: 175,
-          glucose: 88,
-          acr: 6.2,
-          albumin: 8.0,
-          alt: 24.0,
-          ast: 22.0,
-          ggt: 18.0,
-          alp: 68.0,
-          bilirubin: 0.65,
-          serum_albumin: 4.30
-        },
-        highRisk: {
-          age: 65,
-          gender: "2",
-          bmi: 34.2,
-          waist: 112.0,
-          sys_bp: 152,
-          cholesterol: 278,
-          glucose: 195,
-          acr: 120.0,
-          albumin: 180.0,
-          alt: 88.0,
-          ast: 76.0,
-          ggt: 98.0,
-          alp: 165.0,
-          bilirubin: 2.10,
-          serum_albumin: 3.10
-        }
-      };
 
-      const selected = data[type];
-      if (!selected) return;
-
-      for (const [id, val] of Object.entries(selected)) {
-        const el = document.getElementById(id);
-        if (el) {
-          el.value = val;
-          // Dispatch input event to trigger color-range validation script
-          if (el.tagName === 'INPUT' && (el.oninput || el.getAttribute('oninput'))) {
-            el.dispatchEvent(new Event('input'));
-          }
-        }
-      }
-    }
 
     /* ── Auto-scroll to results ──────────────────────────────────────────── */
     {% if results %}
