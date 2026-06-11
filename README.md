@@ -1,4 +1,15 @@
+---
+title: MedScan AI Risk Predictor
+emoji: ⚕️
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # MedScan AI — Multi-Disease Health Risk Predictor
+
 
 MedScan AI is an educational clinical decision support tool that predicts the risk probability of three major diseases—**Diabetes**, **Heart Disease**, and **Liver Disease**—using custom-calibrated XGBoost models. Every prediction is fully explained using local **SHAP (SHAPley Additive exPlanations)** waterfall analysis to highlight which patient vitals are driving the risk assessment.
 
