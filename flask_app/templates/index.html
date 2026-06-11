@@ -1,0 +1,1008 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MedScan AI — Multi-Disease Risk Predictor</title>
+  <meta name="description" content="AI-powered prediction for Diabetes, Heart Disease, and Liver Disease using XGBoost and SHAP explainability." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ── Design tokens ─────────────────────────────────────────────────────── */
+    :root {
+      --bg:          #05091a;
+      --bg2:         #080f22;
+      --surface:     rgba(255,255,255,0.035);
+      --surface2:    rgba(255,255,255,0.06);
+      --border:      rgba(255,255,255,0.08);
+      --border2:     rgba(255,255,255,0.13);
+      --accent:      #00d4ff;
+      --accent2:     #6366f1;
+      --accent-glow: rgba(0,212,255,0.18);
+      --text:        #e2e8f0;
+      --muted:       #64748b;
+      --muted2:      #94a3b8;
+      --green:       #10b981;
+      --amber:       #f59e0b;
+      --red:         #ef4444;
+      --dark-red:    #dc2626;
+      --card-radius: 18px;
+      --input-radius:10px;
+    }
+
+    /* ── Reset & base ──────────────────────────────────────────────────────── */
+    *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+      line-height: 1.6;
+    }
+
+    /* ── Animated ambient background ──────────────────────────────────────── */
+    .bg-glow {
+      position: fixed; inset: 0; pointer-events: none; z-index: 0;
+      background:
+        radial-gradient(ellipse 80% 60% at 10% 15%, rgba(0,212,255,0.06) 0%, transparent 70%),
+        radial-gradient(ellipse 60% 50% at 90% 85%, rgba(99,102,241,0.07) 0%, transparent 70%),
+        radial-gradient(ellipse 50% 40% at 50% 50%, rgba(16,185,129,0.03) 0%, transparent 70%);
+      animation: ambientPulse 10s ease-in-out infinite alternate;
+    }
+    @keyframes ambientPulse {
+      0%   { opacity: 0.8; transform: scale(1); }
+      100% { opacity: 1;   transform: scale(1.06) rotate(2deg); }
+    }
+
+    /* ── Glass utility ─────────────────────────────────────────────────────── */
+    .glass {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border-radius: var(--card-radius);
+    }
+
+    /* ── Navigation ────────────────────────────────────────────────────────── */
+    nav {
+      position: sticky; top: 0; z-index: 200;
+      display: flex; align-items: center; gap: 0.8rem;
+      padding: 0.9rem 2rem;
+      background: rgba(5,9,26,0.75);
+      backdrop-filter: blur(24px);
+      border-bottom: 1px solid var(--border);
+    }
+    .nav-logo {
+      display: flex; align-items: center; gap: 0.6rem;
+      text-decoration: none;
+    }
+    .nav-icon {
+      width: 34px; height: 34px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border-radius: 9px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1rem;
+      box-shadow: 0 0 18px var(--accent-glow);
+    }
+    .nav-name {
+      font-size: 1.15rem; font-weight: 800; letter-spacing: -0.02em;
+      background: linear-gradient(135deg, #fff 10%, var(--accent) 60%, var(--accent2) 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .nav-tag {
+      margin-left: auto;
+      font-size: 0.7rem; color: var(--muted);
+      background: rgba(255,255,255,0.04);
+      padding: 0.25rem 0.7rem; border-radius: 50px;
+      border: 1px solid var(--border);
+    }
+
+    /* ── Layout ────────────────────────────────────────────────────────────── */
+    main {
+      position: relative; z-index: 1;
+      max-width: 1240px; margin: 0 auto;
+      padding: 0 1.5rem 5rem;
+    }
+
+    /* ── Hero ──────────────────────────────────────────────────────────────── */
+    .hero {
+      text-align: center;
+      padding: 4rem 1rem 2.5rem;
+    }
+    .hero-badge {
+      display: inline-flex; align-items: center; gap: 0.4rem;
+      font-size: 0.72rem; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.08em; color: var(--accent);
+      background: rgba(0,212,255,0.08);
+      border: 1px solid rgba(0,212,255,0.2);
+      padding: 0.3rem 0.9rem; border-radius: 50px;
+      margin-bottom: 1.25rem;
+    }
+    .hero h1 {
+      font-size: clamp(1.9rem, 4.5vw, 3.2rem);
+      font-weight: 900; letter-spacing: -0.03em; line-height: 1.15;
+      background: linear-gradient(135deg, #fff 0%, #c7d2fe 40%, var(--accent) 80%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      margin-bottom: 1rem;
+    }
+    .hero p {
+      font-size: 1rem; color: var(--muted2);
+      max-width: 540px; margin: 0 auto;
+    }
+    .hero-stats {
+      display: flex; justify-content: center; gap: 2.5rem; flex-wrap: wrap;
+      margin-top: 2rem;
+    }
+    .stat { text-align: center; }
+    .stat-value { font-size: 1.3rem; font-weight: 800; color: var(--accent); }
+    .stat-label { font-size: 0.72rem; color: var(--muted); margin-top: 0.1rem; }
+
+    /* ── Error banner ──────────────────────────────────────────────────────── */
+    .error-banner {
+      display: flex; align-items: center; gap: 0.75rem;
+      background: rgba(239,68,68,0.09);
+      border: 1px solid rgba(239,68,68,0.25);
+      color: #fca5a5; padding: 1rem 1.25rem;
+      border-radius: 12px; margin-bottom: 1.5rem;
+      font-size: 0.875rem;
+    }
+
+    /* ── Form card ─────────────────────────────────────────────────────────── */
+    .form-card {
+      padding: 2rem 2rem 1.5rem;
+      margin-top: 0.5rem;
+    }
+    .form-card-header {
+      display: flex; align-items: center; gap: 0.75rem;
+      margin-bottom: 1.75rem; padding-bottom: 1.25rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .form-card-header h2 {
+      font-size: 1.05rem; font-weight: 700; color: var(--text);
+    }
+    .form-card-header p { font-size: 0.8rem; color: var(--muted); margin-top: 0.15rem; }
+
+    .sections-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
+      gap: 1.25rem;
+    }
+
+    /* Liver panel spans 2 cols on wide screens */
+    @media (min-width: 960px) {
+      .liver-section { grid-column: span 2; }
+    }
+
+    /* ── Form section ──────────────────────────────────────────────────────── */
+    .fsec {
+      background: rgba(255,255,255,0.025);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 1.25rem;
+      transition: border-color 0.2s;
+    }
+    .fsec:hover { border-color: var(--border2); }
+
+    .fsec-head {
+      display: flex; align-items: center; gap: 0.55rem;
+      margin-bottom: 1.1rem; padding-bottom: 0.8rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .fsec-icon {
+      width: 28px; height: 28px; border-radius: 7px;
+      background: rgba(0,212,255,0.1);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.85rem;
+    }
+    .fsec-title {
+      font-size: 0.75rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--accent);
+    }
+
+    /* ── Field ─────────────────────────────────────────────────────────────── */
+    .field { margin-bottom: 0.9rem; }
+    .field:last-child { margin-bottom: 0; }
+
+    .field label {
+      display: block; font-size: 0.78rem; font-weight: 500;
+      color: var(--muted2); margin-bottom: 0.38rem;
+    }
+
+    .input-wrap { position: relative; }
+
+    .input-wrap input,
+    .input-wrap select {
+      width: 100%; padding: 0.6rem 2.6rem 0.6rem 0.85rem;
+      background: rgba(255,255,255,0.05);
+      border: 1.5px solid rgba(255,255,255,0.1);
+      border-radius: var(--input-radius);
+      color: var(--text);
+      font-size: 0.875rem; font-family: 'Inter', sans-serif;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+      -webkit-appearance: none;
+    }
+    .input-wrap select { padding-right: 0.85rem; }
+
+    .input-wrap input::placeholder { color: var(--muted); }
+
+    .input-wrap input:focus,
+    .input-wrap select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(0,212,255,0.12);
+      background: rgba(0,212,255,0.04);
+    }
+    .input-wrap input.ok  { border-color: var(--green);  }
+    .input-wrap input.warn{ border-color: var(--amber);  }
+    .input-wrap input.bad { border-color: var(--red);    }
+
+    .input-wrap input.ok:focus  { box-shadow: 0 0 0 3px rgba(16,185,129,0.12); }
+    .input-wrap input.warn:focus{ box-shadow: 0 0 0 3px rgba(245,158,11,0.12); }
+    .input-wrap input.bad:focus { box-shadow: 0 0 0 3px rgba(239,68,68,0.12);  }
+
+    .unit-tag {
+      position: absolute; right: 0.75rem; top: 50%;
+      transform: translateY(-50%);
+      font-size: 0.68rem; color: var(--muted);
+      pointer-events: none; white-space: nowrap;
+    }
+
+    .range-hint {
+      font-size: 0.67rem; margin-top: 0.28rem;
+      color: var(--muted); transition: color 0.2s;
+      display: flex; align-items: center; gap: 0.25rem;
+    }
+    .range-hint::before { content: '●'; font-size: 0.5rem; }
+    .range-hint.ok   { color: var(--green);  }
+    .range-hint.warn { color: var(--amber);  }
+    .range-hint.bad  { color: var(--red);    }
+
+    /* Two-col inner grid for liver panel */
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem 1rem; }
+
+    /* ── Submit button ──────────────────────────────────────────────────────── */
+    .submit-row {
+      display: flex; align-items: center; justify-content: center;
+      gap: 1.5rem; margin-top: 1.75rem; flex-wrap: wrap;
+    }
+    .btn-predict {
+      display: inline-flex; align-items: center; gap: 0.7rem;
+      padding: 0.85rem 2.4rem;
+      background: linear-gradient(135deg, var(--accent) 0%, var(--accent2) 100%);
+      color: #fff; border: none; border-radius: 50px;
+      font-size: 0.95rem; font-weight: 700; font-family: 'Inter', sans-serif;
+      cursor: pointer; letter-spacing: 0.01em;
+      box-shadow: 0 4px 28px var(--accent-glow);
+      transition: transform 0.18s, box-shadow 0.18s;
+    }
+    .btn-predict:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 40px rgba(0,212,255,0.45);
+    }
+    .btn-predict:active { transform: translateY(0); }
+
+    .btn-autofill {
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      padding: 0.85rem 1.6rem;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px dashed var(--border);
+      border-radius: 50px;
+      color: var(--text);
+      font-size: 0.88rem; font-weight: 600; font-family: 'Inter', sans-serif;
+      cursor: pointer;
+      transition: background 0.18s, border-color 0.18s, transform 0.18s;
+    }
+    .btn-autofill:hover {
+      background: rgba(255, 255, 255, 0.12);
+      border-color: var(--accent);
+      transform: translateY(-2px);
+    }
+    .btn-autofill:active { transform: translateY(0); }
+
+    .submit-note { font-size: 0.72rem; color: var(--muted); }
+
+    /* ── Loading overlay ────────────────────────────────────────────────────── */
+    #loadingOverlay {
+      display: none; position: fixed; inset: 0; z-index: 9999;
+      background: rgba(5,9,26,0.88); backdrop-filter: blur(12px);
+      flex-direction: column; align-items: center; justify-content: center;
+      gap: 1.2rem;
+    }
+    #loadingOverlay.active { display: flex; }
+
+    .loader-ring {
+      width: 60px; height: 60px; position: relative;
+    }
+    .loader-ring::after {
+      content: '';
+      position: absolute; inset: 0;
+      border-radius: 50%;
+      border: 3px solid transparent;
+      border-top-color: var(--accent);
+      border-right-color: rgba(0,212,255,0.3);
+      animation: spin 0.75s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .loader-label { font-size: 0.9rem; color: var(--muted2); text-align: center; }
+    .loader-sub { font-size: 0.75rem; color: var(--muted); text-align: center; }
+
+    /* ── Results section ────────────────────────────────────────────────────── */
+    .results-header {
+      display: flex; align-items: center; gap: 1rem;
+      margin: 3rem 0 1.5rem;
+    }
+    .results-header h2 { font-size: 1.4rem; font-weight: 800; white-space: nowrap; }
+    .hr-line { flex: 1; height: 1px; background: var(--border); }
+
+    .results-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+      gap: 1.5rem;
+    }
+
+    /* ── Result card ────────────────────────────────────────────────────────── */
+    .result-card {
+      padding: 1.75rem;
+      display: flex; flex-direction: column; gap: 1.4rem;
+      transition: transform 0.2s;
+      animation: cardReveal 0.5s ease both;
+    }
+    .result-card:nth-child(2) { animation-delay: 0.08s; }
+    .result-card:nth-child(3) { animation-delay: 0.16s; }
+
+    @keyframes cardReveal {
+      from { opacity: 0; transform: translateY(20px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Disease header row */
+    .d-header {
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .d-name {
+      display: flex; align-items: center; gap: 0.55rem;
+      font-size: 1.05rem; font-weight: 700;
+    }
+    .d-icon {
+      width: 36px; height: 36px; border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.1rem;
+    }
+    .risk-pill {
+      padding: 0.22rem 0.75rem; border-radius: 50px;
+      font-size: 0.68rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.06em;
+    }
+
+    /* Divider */
+    .c-divider { height: 1px; background: var(--border); }
+
+    /* ── Probability gauge ──────────────────────────────────────────────────── */
+    .gauge-row {
+      display: flex; align-items: center; gap: 1.5rem;
+    }
+    .gauge-svg-wrap { flex-shrink: 0; }
+    .gauge-svg { width: 115px; height: 115px; }
+
+    .gauge-bg { fill: none; stroke: rgba(255,255,255,0.05); stroke-width: 9; }
+    .gauge-arc {
+      fill: none; stroke-width: 9; stroke-linecap: round;
+      transform-origin: 50px 50px;
+      transform: rotate(-90deg);
+      transition: stroke-dashoffset 1.4s cubic-bezier(.4,0,.2,1);
+    }
+
+    .gauge-info { flex: 1; }
+    .prob-big {
+      font-size: 2.2rem; font-weight: 900; line-height: 1;
+      letter-spacing: -0.03em;
+    }
+    .prob-sub { font-size: 0.73rem; color: var(--muted); margin-top: 0.2rem; }
+    .thresh-chip {
+      display: inline-block; margin-top: 0.55rem;
+      font-size: 0.67rem; color: var(--muted2);
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--border);
+      padding: 0.2rem 0.55rem; border-radius: 6px;
+    }
+
+    /* ── Top factors ────────────────────────────────────────────────────────── */
+    .factors-block h4 {
+      font-size: 0.7rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--muted); margin-bottom: 0.85rem;
+    }
+    .factor-group-label {
+      font-size: 0.67rem; color: var(--muted); margin-bottom: 0.4rem;
+      display: flex; align-items: center; gap: 0.3rem;
+    }
+    .factor-row {
+      display: flex; align-items: center; gap: 0.55rem;
+      margin-bottom: 0.42rem; font-size: 0.78rem;
+    }
+    .f-arrow { font-size: 0.6rem; width: 14px; flex-shrink: 0; }
+    .f-name {
+      flex: 1; color: var(--muted2);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      font-size: 0.75rem;
+    }
+    .f-track {
+      width: 72px; height: 5px;
+      background: rgba(255,255,255,0.06);
+      border-radius: 3px; overflow: hidden; flex-shrink: 0;
+    }
+    .f-bar { height: 100%; border-radius: 3px; transition: width 0.8s ease; }
+    .f-val { font-size: 0.67rem; width: 40px; text-align: right; flex-shrink: 0; }
+
+    /* ── SHAP plot ──────────────────────────────────────────────────────────── */
+    .shap-block h4 {
+      font-size: 0.7rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--muted); margin-bottom: 0.75rem;
+    }
+    .shap-img-wrap {
+      border-radius: 10px; overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.07);
+    }
+    .shap-img { width: 100%; display: block; }
+
+    /* ── Disclaimer ─────────────────────────────────────────────────────────── */
+    .disclaimer {
+      margin-top: 3.5rem;
+      text-align: center; font-size: 0.7rem; color: var(--muted);
+      padding: 1.25rem; border-top: 1px solid var(--border);
+      line-height: 1.8;
+    }
+
+    /* ── Responsive ─────────────────────────────────────────────────────────── */
+    @media (max-width: 700px) {
+      .sections-grid, .results-grid { grid-template-columns: 1fr; }
+      .two-col { grid-template-columns: 1fr; }
+      .hero-stats { gap: 1.5rem; }
+      .nav-tag { display: none; }
+    }
+  </style>
+</head>
+
+<body>
+  <!-- Ambient glow -->
+  <div class="bg-glow"></div>
+
+  <!-- Loading overlay -->
+  <div id="loadingOverlay">
+    <div class="loader-ring"></div>
+    <p class="loader-label">Computing AI Risk Assessment…</p>
+    <p class="loader-sub">Running SHAP analysis for all 3 models — this takes ~30 s</p>
+  </div>
+
+  <!-- Navigation -->
+  <nav>
+    <a class="nav-logo" href="/">
+      <div class="nav-icon">⚕</div>
+      <span class="nav-name">MedScan AI</span>
+    </a>
+    <span class="nav-tag">Educational Use Only · Not Medical Advice</span>
+  </nav>
+
+  <main>
+    <!-- Hero -->
+    <div class="hero">
+      <div class="hero-badge">⚡ XGBoost + SHAP Explainability</div>
+      <h1>Multi-Disease Health<br>Risk Predictor</h1>
+      <p>Enter patient vitals and lab values to receive AI-powered risk scores for Diabetes, Heart Disease, and Liver Disease — with full SHAP explainability.</p>
+      <div class="hero-stats">
+        <div class="stat"><div class="stat-value">ROC 0.91</div><div class="stat-label">Diabetes</div></div>
+        <div class="stat"><div class="stat-value">ROC 0.84</div><div class="stat-label">Heart Disease</div></div>
+        <div class="stat"><div class="stat-value">ROC 0.75</div><div class="stat-label">Liver Disease</div></div>
+        <div class="stat"><div class="stat-value">9,254</div><div class="stat-label">NHANES Records</div></div>
+      </div>
+    </div>
+
+    <!-- Error -->
+    {% if error %}
+    <div class="error-banner">
+      <span style="font-size:1.1rem;">⚠️</span>
+      <div><strong>Prediction Error:</strong> {{ error }}</div>
+    </div>
+    {% endif %}
+
+    <!-- ── Input Form ─────────────────────────────────────────────────────── -->
+    <div class="glass form-card">
+      <div class="form-card-header">
+        <div style="font-size:1.3rem;">📋</div>
+        <div>
+          <h2>Patient Vitals &amp; Lab Values</h2>
+          <p>All fields required. Ideal ranges shown below each input. Values in green are within normal range.</p>
+        </div>
+      </div>
+
+      <form method="POST" id="predictForm" onsubmit="showLoading()">
+        <div class="sections-grid">
+
+          <!-- Demographics -->
+          <div class="fsec">
+            <div class="fsec-head">
+              <div class="fsec-icon">👤</div>
+              <span class="fsec-title">Patient Demographics</span>
+            </div>
+            <div class="field">
+              <label for="age">Age</label>
+              <div class="input-wrap">
+                <input type="number" id="age" name="age" min="1" max="100" step="1"
+                  value="{{ form_data.get('age','') }}" placeholder="45"
+                  oninput="checkRange(this,18,65,'ok')" required />
+                <span class="unit-tag">yrs</span>
+              </div>
+              <div class="range-hint" id="age-hint">Ideal: 18–65 years</div>
+            </div>
+            <div class="field">
+              <label for="gender">Biological Sex</label>
+              <div class="input-wrap">
+                <select id="gender" name="gender" required>
+                  <option value="" disabled {% if not form_data.get('gender') %}selected{% endif %}>Select…</option>
+                  <option value="1" {% if form_data.get('gender')=='1' %}selected{% endif %}>Male</option>
+                  <option value="2" {% if form_data.get('gender')=='2' %}selected{% endif %}>Female</option>
+                </select>
+              </div>
+              <div class="range-hint">Used by Heart Disease model</div>
+            </div>
+          </div>
+
+          <!-- Body Measurements -->
+          <div class="fsec">
+            <div class="fsec-head">
+              <div class="fsec-icon">⚖️</div>
+              <span class="fsec-title">Body Measurements</span>
+            </div>
+            <div class="field">
+              <label for="bmi">Body Mass Index (BMI)</label>
+              <div class="input-wrap">
+                <input type="number" id="bmi" name="bmi" min="10" max="70" step="0.1"
+                  value="{{ form_data.get('bmi','') }}" placeholder="23.5"
+                  oninput="checkRange(this,18.5,24.9,'ok')" required />
+                <span class="unit-tag">kg/m²</span>
+              </div>
+              <div class="range-hint" id="bmi-hint">Ideal: 18.5–24.9 (normal weight)</div>
+            </div>
+            <div class="field">
+              <label for="waist">Waist Circumference</label>
+              <div class="input-wrap">
+                <input type="number" id="waist" name="waist" min="40" max="200" step="0.1"
+                  value="{{ form_data.get('waist','') }}" placeholder="88.0"
+                  oninput="checkRangeMax(this,94,'ok')" required />
+                <span class="unit-tag">cm</span>
+              </div>
+              <div class="range-hint" id="waist-hint">Ideal: &lt;94 cm (M) / &lt;80 cm (F)</div>
+            </div>
+          </div>
+
+          <!-- Cardiovascular -->
+          <div class="fsec">
+            <div class="fsec-head">
+              <div class="fsec-icon">❤️</div>
+              <span class="fsec-title">Cardiovascular</span>
+            </div>
+            <div class="field">
+              <label for="sys_bp">Systolic Blood Pressure</label>
+              <div class="input-wrap">
+                <input type="number" id="sys_bp" name="sys_bp" min="60" max="250" step="1"
+                  value="{{ form_data.get('sys_bp','') }}" placeholder="118"
+                  oninput="checkRange(this,90,120,'ok')" required />
+                <span class="unit-tag">mmHg</span>
+              </div>
+              <div class="range-hint" id="sys_bp-hint">Ideal: 90–120 mmHg (normal)</div>
+            </div>
+            <div class="field">
+              <label for="cholesterol">Total Cholesterol</label>
+              <div class="input-wrap">
+                <input type="number" id="cholesterol" name="cholesterol" min="50" max="500" step="1"
+                  value="{{ form_data.get('cholesterol','') }}" placeholder="175"
+                  oninput="checkRangeMax(this,200,'ok')" required />
+                <span class="unit-tag">mg/dL</span>
+              </div>
+              <div class="range-hint" id="cholesterol-hint">Ideal: &lt;200 mg/dL (desirable)</div>
+            </div>
+          </div>
+
+          <!-- Blood Glucose -->
+          <div class="fsec">
+            <div class="fsec-head">
+              <div class="fsec-icon">🩸</div>
+              <span class="fsec-title">Blood Glucose</span>
+            </div>
+            <div class="field">
+              <label for="glucose">Fasting Blood Glucose</label>
+              <div class="input-wrap">
+                <input type="number" id="glucose" name="glucose" min="40" max="700" step="1"
+                  value="{{ form_data.get('glucose','') }}" placeholder="95"
+                  oninput="checkRange(this,70,99,'ok')" required />
+                <span class="unit-tag">mg/dL</span>
+              </div>
+              <div class="range-hint" id="glucose-hint">Ideal: 70–99 mg/dL (normal fasting)</div>
+            </div>
+            <div style="margin-top:0.6rem; padding:0.7rem 0.85rem;
+              background:rgba(0,212,255,0.04); border:1px dashed rgba(0,212,255,0.15);
+              border-radius:8px; font-size:0.72rem; color:var(--muted2); line-height:1.6;">
+              <strong style="color:var(--accent);">Auto-derived:</strong> Blood Glucose in mmol/L
+              = mg/dL × 0.0555 (computed internally for models).
+            </div>
+          </div>
+
+          <!-- Kidney Function -->
+          <div class="fsec">
+            <div class="fsec-head">
+              <div class="fsec-icon">🫘</div>
+              <span class="fsec-title">Kidney Function</span>
+            </div>
+            <div class="field">
+              <label for="acr">Albumin-to-Creatinine Ratio (ACR)</label>
+              <div class="input-wrap">
+                <input type="number" id="acr" name="acr" min="0" max="3000" step="0.1"
+                  value="{{ form_data.get('acr','') }}" placeholder="8.2"
+                  oninput="checkRangeMax(this,30,'ok')" required />
+                <span class="unit-tag">mg/g</span>
+              </div>
+              <div class="range-hint" id="acr-hint">Ideal: &lt;30 mg/g (normal)</div>
+            </div>
+            <div class="field">
+              <label for="albumin">Urine Albumin</label>
+              <div class="input-wrap">
+                <input type="number" id="albumin" name="albumin" min="0" max="3000" step="0.1"
+                  value="{{ form_data.get('albumin','') }}" placeholder="7.5"
+                  oninput="checkRangeMax(this,30,'ok')" required />
+                <span class="unit-tag">µg/mL</span>
+              </div>
+              <div class="range-hint" id="albumin-hint">Ideal: &lt;30 µg/mL (normal)</div>
+            </div>
+          </div>
+
+          <!-- Liver Panel (wider) -->
+          <div class="fsec liver-section">
+            <div class="fsec-head">
+              <div class="fsec-icon">🫀</div>
+              <span class="fsec-title">Liver Enzyme Panel — from BIOPRO</span>
+            </div>
+            <div class="two-col">
+              <div class="field">
+                <label for="alt">ALT — Alanine Aminotransferase</label>
+                <div class="input-wrap">
+                  <input type="number" id="alt" name="alt" min="0" max="1000" step="0.1"
+                    value="{{ form_data.get('alt','') }}" placeholder="25"
+                    oninput="checkRange(this,7,56,'ok')" required />
+                  <span class="unit-tag">U/L</span>
+                </div>
+                <div class="range-hint" id="alt-hint">Ideal: 7–56 U/L</div>
+              </div>
+              <div class="field">
+                <label for="ast">AST — Aspartate Aminotransferase</label>
+                <div class="input-wrap">
+                  <input type="number" id="ast" name="ast" min="0" max="1000" step="0.1"
+                    value="{{ form_data.get('ast','') }}" placeholder="22"
+                    oninput="checkRange(this,10,40,'ok')" required />
+                  <span class="unit-tag">U/L</span>
+                </div>
+                <div class="range-hint" id="ast-hint">Ideal: 10–40 U/L</div>
+              </div>
+              <div class="field">
+                <label for="ggt">GGT — Gamma-Glutamyl Transferase</label>
+                <div class="input-wrap">
+                  <input type="number" id="ggt" name="ggt" min="0" max="2000" step="0.1"
+                    value="{{ form_data.get('ggt','') }}" placeholder="18"
+                    oninput="checkRange(this,8,61,'ok')" required />
+                  <span class="unit-tag">U/L</span>
+                </div>
+                <div class="range-hint" id="ggt-hint">Ideal: 8–61 U/L</div>
+              </div>
+              <div class="field">
+                <label for="alp">ALP — Alkaline Phosphatase</label>
+                <div class="input-wrap">
+                  <input type="number" id="alp" name="alp" min="0" max="1000" step="0.1"
+                    value="{{ form_data.get('alp','') }}" placeholder="78"
+                    oninput="checkRange(this,44,147,'ok')" required />
+                  <span class="unit-tag">U/L</span>
+                </div>
+                <div class="range-hint" id="alp-hint">Ideal: 44–147 U/L</div>
+              </div>
+              <div class="field">
+                <label for="bilirubin">Total Bilirubin</label>
+                <div class="input-wrap">
+                  <input type="number" id="bilirubin" name="bilirubin" min="0" max="30" step="0.01"
+                    value="{{ form_data.get('bilirubin','') }}" placeholder="0.6"
+                    oninput="checkRange(this,0.1,1.2,'ok')" required />
+                  <span class="unit-tag">mg/dL</span>
+                </div>
+                <div class="range-hint" id="bilirubin-hint">Ideal: 0.1–1.2 mg/dL</div>
+              </div>
+              <div class="field">
+                <label for="serum_albumin">Serum Albumin</label>
+                <div class="input-wrap">
+                  <input type="number" id="serum_albumin" name="serum_albumin" min="0" max="10" step="0.01"
+                    value="{{ form_data.get('serum_albumin','') }}" placeholder="4.2"
+                    oninput="checkRange(this,3.5,5.0,'ok')" required />
+                  <span class="unit-tag">g/dL</span>
+                </div>
+                <div class="range-hint" id="serum_albumin-hint">Ideal: 3.5–5.0 g/dL</div>
+              </div>
+            </div>
+          </div>
+
+        </div><!-- sections-grid -->
+
+        <div class="submit-row">
+          <button type="button" class="btn-autofill" onclick="fillSampleData('healthy')">
+            <span>🟢</span> Autofill (Healthy)
+          </button>
+          <button type="button" class="btn-autofill" onclick="fillSampleData('highRisk')">
+            <span>🔴</span> Autofill (High Risk)
+          </button>
+          <button type="submit" class="btn-predict" id="predictBtn">
+            <span style="font-size:1.1rem;">⚡</span>
+            Predict Risk &amp; Explain with SHAP
+          </button>
+          <span class="submit-note">⏱ ~30–60 seconds · SHAP analysis runs on all 3 models</span>
+        </div>
+      </form>
+    </div><!-- form-card -->
+
+
+    <!-- ── Results ──────────────────────────────────────────────────────────── -->
+    {% if results %}
+    <div id="resultsSection">
+      <div class="results-header">
+        <h2>Risk Assessment Results</h2>
+        <div class="hr-line"></div>
+        <span style="font-size:0.72rem; color:var(--muted); white-space:nowrap;">
+          Tuned thresholds: Diabetes 35% · Heart 15% · Liver 10%
+        </span>
+      </div>
+
+      <div class="results-grid">
+        {% set icons  = {'Diabetes':'🩸','Heart Disease':'❤️','Liver Disease':'🫀'} %}
+        {% set d_bg   = {'Diabetes':'rgba(239,68,68,0.08)',
+                          'Heart Disease':'rgba(239,68,68,0.08)',
+                          'Liver Disease':'rgba(245,158,11,0.08)'} %}
+
+        {% for disease, r in results.items() %}
+        <div class="glass result-card">
+
+          <!-- Disease header -->
+          <div class="d-header">
+            <div class="d-name">
+              <div class="d-icon" style="background:{{ d_bg[disease] }};">
+                {{ icons[disease] }}
+              </div>
+              {{ disease }}
+            </div>
+            <span class="risk-pill"
+              style="background:{{ r.color }}18; color:{{ r.color }};
+                     border:1px solid {{ r.color }}44;">
+              {{ r.label }}
+            </span>
+          </div>
+
+          <div class="c-divider"></div>
+
+          <!-- Gauge + stats -->
+          <div class="gauge-row">
+            <div class="gauge-svg-wrap">
+              <svg class="gauge-svg" viewBox="0 0 100 100">
+                <circle class="gauge-bg" cx="50" cy="50" r="42"/>
+                <circle class="gauge-arc"
+                  cx="50" cy="50" r="42"
+                  stroke="{{ r.color }}"
+                  stroke-dasharray="{{ r.circ }}"
+                  stroke-dashoffset="{{ r.offset }}"
+                  style="filter:drop-shadow(0 0 7px {{ r.color }}99);"
+                />
+                <text text-anchor="middle" dominant-baseline="central" x="50" y="47">
+                  <tspan font-size="13" font-weight="800" fill="{{ r.color }}"
+                    font-family="Inter">{{ r.prob_pct }}%</tspan>
+                </text>
+                <text text-anchor="middle" x="50" y="59"
+                  font-size="5.5" fill="#64748b" font-family="Inter">RISK SCORE</text>
+              </svg>
+            </div>
+            <div class="gauge-info">
+              <div class="prob-big" style="color:{{ r.color }};">{{ r.prob_pct }}%</div>
+              <div class="prob-sub">Predicted probability</div>
+              <div class="thresh-chip">
+                Alert threshold: {{ r.thresh_pct }}% ·
+                {% if r.prob >= r.thresh %}⚠ Above threshold{% else %}✓ Below threshold{% endif %}
+              </div>
+            </div>
+          </div>
+
+          <div class="c-divider"></div>
+
+          <!-- Top factors -->
+          <div class="factors-block">
+            <h4>🔍 Key Contributing Factors</h4>
+
+            {% if r.pos %}
+            <div class="factor-group-label">
+              <span style="color:var(--red);">▲</span> Factors <strong>increasing</strong> risk
+            </div>
+            {% for fname, fval, fpct in r.pos %}
+            <div class="factor-row">
+              <span class="f-arrow" style="color:var(--red);">▲</span>
+              <span class="f-name" title="{{ fname }}">{{ fname }}</span>
+              <div class="f-track">
+                <div class="f-bar" style="width:{{ fpct }}%; background:var(--red);"></div>
+              </div>
+              <span class="f-val" style="color:var(--red);">+{{ '%.3f'|format(fval) }}</span>
+            </div>
+            {% endfor %}
+            {% endif %}
+
+            {% if r.neg %}
+            <div class="factor-group-label" style="margin-top:0.55rem;">
+              <span style="color:var(--green);">▼</span> Factors <strong>decreasing</strong> risk
+            </div>
+            {% for fname, fval, fpct in r.neg %}
+            <div class="factor-row">
+              <span class="f-arrow" style="color:var(--green);">▼</span>
+              <span class="f-name" title="{{ fname }}">{{ fname }}</span>
+              <div class="f-track">
+                <div class="f-bar" style="width:{{ fpct }}%; background:var(--green);"></div>
+              </div>
+              <span class="f-val" style="color:var(--green);">{{ '%.3f'|format(fval) }}</span>
+            </div>
+            {% endfor %}
+            {% endif %}
+
+            {% if not r.pos and not r.neg %}
+            <p style="font-size:0.78rem; color:var(--muted);">No significant SHAP contributors detected.</p>
+            {% endif %}
+          </div>
+
+          <div class="c-divider"></div>
+
+          <!-- SHAP waterfall plot -->
+          <div class="shap-block">
+            <h4>📊 SHAP Waterfall Analysis</h4>
+            <p style="font-size:0.68rem; color:var(--muted); margin-bottom:0.65rem;">
+              Red bars push risk higher · Blue bars pull risk lower · Base value = population average
+            </p>
+            <div class="shap-img-wrap">
+              <img class="shap-img"
+                src="data:image/png;base64,{{ r.plot }}"
+                alt="SHAP Waterfall for {{ disease }}"
+                loading="lazy" />
+            </div>
+          </div>
+
+        </div><!-- result-card -->
+        {% endfor %}
+      </div><!-- results-grid -->
+
+      <p class="disclaimer">
+        ⚕️ <strong>MedScan AI</strong> is for educational and research purposes only.<br>
+        Predictions are based on population-level NHANES data and XGBoost models with SHAP explainability.<br>
+        This tool is <strong>not a substitute</strong> for professional medical diagnosis or treatment.
+      </p>
+    </div><!-- resultsSection -->
+    {% endif %}
+
+  </main>
+
+  <script>
+    /* ── Real-time range validation ─────────────────────────────────────── */
+    function checkRange(input, min, max, _) {
+      const val  = parseFloat(input.value);
+      const hint = document.getElementById(input.id + '-hint');
+      if (isNaN(val) || input.value === '') {
+        input.className = ''; if (hint) hint.className = 'range-hint'; return;
+      }
+      const inRange  = val >= min && val <= max;
+      const nearLow  = val < min  && val >= min * 0.88;
+      const nearHigh = val > max  && val <= max * 1.12;
+
+      if (inRange) {
+        setClass(input, hint, 'ok', '✓ Normal range');
+      } else if (nearLow || nearHigh) {
+        setClass(input, hint, 'warn', '⚠ Borderline range');
+      } else {
+        setClass(input, hint, 'bad', '✕ Outside normal range');
+      }
+    }
+
+    function checkRangeMax(input, max, _) {
+      const val  = parseFloat(input.value);
+      const hint = document.getElementById(input.id + '-hint');
+      if (isNaN(val) || input.value === '') {
+        input.className = ''; if (hint) hint.className = 'range-hint'; return;
+      }
+      if (val <= max) {
+        setClass(input, hint, 'ok', '✓ Normal range');
+      } else if (val <= max * 1.15) {
+        setClass(input, hint, 'warn', '⚠ Slightly elevated');
+      } else {
+        setClass(input, hint, 'bad', '✕ Elevated — above normal');
+      }
+    }
+
+    function setClass(input, hint, cls, msg) {
+      input.className = cls;
+      if (!hint) return;
+      hint.className = 'range-hint ' + cls;
+      /* preserve the original static hint text from HTML on first run */
+      if (!hint.dataset.orig) hint.dataset.orig = hint.textContent;
+      hint.textContent = msg + '  (' + hint.dataset.orig.trim() + ')';
+    }
+
+    /* ── Loading overlay ─────────────────────────────────────────────────── */
+    function showLoading() {
+      document.getElementById('loadingOverlay').classList.add('active');
+    }
+
+    /* ── Autofill Helper ─────────────────────────────────────────────────── */
+    function fillSampleData(type) {
+      const data = {
+        healthy: {
+          age: 35,
+          gender: "1",
+          bmi: 22.5,
+          waist: 84.0,
+          sys_bp: 115,
+          cholesterol: 175,
+          glucose: 88,
+          acr: 6.2,
+          albumin: 8.0,
+          alt: 24.0,
+          ast: 22.0,
+          ggt: 18.0,
+          alp: 68.0,
+          bilirubin: 0.65,
+          serum_albumin: 4.30
+        },
+        highRisk: {
+          age: 65,
+          gender: "2",
+          bmi: 34.2,
+          waist: 112.0,
+          sys_bp: 152,
+          cholesterol: 278,
+          glucose: 195,
+          acr: 120.0,
+          albumin: 180.0,
+          alt: 88.0,
+          ast: 76.0,
+          ggt: 98.0,
+          alp: 165.0,
+          bilirubin: 2.10,
+          serum_albumin: 3.10
+        }
+      };
+
+      const selected = data[type];
+      if (!selected) return;
+
+      for (const [id, val] of Object.entries(selected)) {
+        const el = document.getElementById(id);
+        if (el) {
+          el.value = val;
+          // Dispatch input event to trigger color-range validation script
+          if (el.tagName === 'INPUT' && (el.oninput || el.getAttribute('oninput'))) {
+            el.dispatchEvent(new Event('input'));
+          }
+        }
+      }
+    }
+
+    /* ── Auto-scroll to results ──────────────────────────────────────────── */
+    {% if results %}
+    window.addEventListener('load', () => {
+      const el = document.getElementById('resultsSection');
+      if (el) setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'start' }), 200);
+    });
+    {% endif %}
+  </script>
+</body>
+</html>
