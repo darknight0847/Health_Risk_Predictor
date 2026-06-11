@@ -1,13 +1,3 @@
----
-title: MedScan AI Risk Predictor
-emoji: ⚕️
-colorFrom: blue
-colorTo: indigo
-sdk: docker
-app_port: 7860
-pinned: false
----
-
 # MedScan AI — Multi-Disease Health Risk Predictor
 
 
@@ -65,12 +55,15 @@ Ensure the directory structure matches the repository layout.
 pip install -r flask_app/requirements.txt
 ```
 
-### 3. Run the App
-```bash
-cd flask_app
-python app.py
-```
-Visit **[http://127.0.0.1:5000](http://127.0.0.1:5000)** in your browser.
+### 3. Access the App
+
+Visit the live application here:
+
+https://darknight0847-health-risk-predictor.hf.space/
+
+Or click:
+
+[Health Risk Predictor](https://darknight0847-health-risk-predictor.hf.space/)
 
 > [!TIP]
 > Use the **🟢 Autofill (Healthy)** and **🔴 Autofill (High Risk)** buttons in the web interface to instantly test different diagnostic scenarios!
