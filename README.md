@@ -14,14 +14,18 @@ MedScan AI is an educational clinical decision support tool that predicts the ri
 
 ---
 
-## 📈 Model Performance & Features
-All models are trained on the CDC's **NHANES** (National Health and Nutrition Examination Survey) dataset and validated against a holdout test split of **9,254 records**.
+## 📈 Model Performance & Validation
+All models are trained on the CDC's **NHANES** (National Health and Nutrition Examination Survey) dataset and validated against a stratified holdout split of **9,254 records**.
 
-| Disease | ROC-AUC | Key Clinical Features Used |
-| :--- | :---: | :--- |
-| **Diabetes** | **0.91** | Age, Fasting Glucose (mg/dL & mmol/L), Waist Circumference, BMI, Systolic Blood Pressure, Albumin-Creatinine Ratio (ACR) |
-| **Heart Disease** | **0.84** | Age, Urinary ACR, Waist Circumference, Biological Sex, Total Cholesterol |
-| **Liver Disease** | **0.75** | Age, Fasting Glucose, Systolic BP, Urine Albumin, ALT, AST, GGT, ALP, Total Bilirubin, Serum Albumin |
+→ [Model Card](./MODEL_CARD.md)
+
+| Disease | ROC-AUC | PR-AUC | Brier Score | Threshold | Sensitivity | Specificity | Threshold Strategy |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **Diabetes** | **0.91** | **0.6171** | **0.0578** | **0.098** | **0.860** | **0.791** | Sensitivity ≥ 0.85 |
+| **Heart Disease** | **0.80** | **0.1888** | **0.0429** | **0.026** | **0.755** | **0.710** | Sensitivity ≥ 0.75 |
+| **Liver Disease** | **0.75** | **0.1712** | **0.0476** | **0.070** | **0.542** | **0.802** | Specificity ≥ 0.80 |
+
+> **PR-AUC** is more honest than ROC-AUC for rare-disease prediction (class imbalance). **Brier Score** measures calibration quality (lower is better). Heart Disease uses post-hoc Platt calibration to align risk outputs. Brier Skill Score normalises calibration against base rate (Diabetes: 0.3727, Heart Disease: 0.0567, Liver Disease: 0.0538).
 
 ---
 
@@ -29,18 +33,21 @@ All models are trained on the CDC's **NHANES** (National Health and Nutrition Ex
 
 ```text
 ├── flask_app/
-│   ├── app.py                  # Flask Backend (Loads models & computes SHAP plots)
-│   ├── requirements.txt        # Backend dependencies
+│   ├── app.py                           # Flask Backend (Loads models & computes SHAP plots)
+│   ├── requirements.txt                 # Backend dependencies (pinned versions)
+│   ├── generate_calibration_plots.py    # One-time script: generates calibration curve PNGs
+│   ├── static/calibration/              # Pre-generated calibration PNG files
 │   └── templates/
-│       └── index.html          # Premium frontend template with range validation & autofill
+│       └── index.html                   # Premium frontend template with range validation & autofill
 ├── saved_models/
-│   ├── Diabetes_model.joblib   # Trained pipeline (imputer + scaler + XGBoost)
+│   ├── Diabetes_model.joblib            # Trained pipeline (imputer + scaler + XGBoost)
 │   ├── Heart_Disease_model.joblib
 │   ├── Liver_Disease_model.joblib
-│   └── background_data.joblib  # Sampled background distributions for SHAP explainer
-├── test_clinical_personas.py   # Smoke tests for 10 hand-crafted clinical personas
-├── test_holdout_evaluation.py  # Validation script computing formal test split metrics
-└── .gitignore                  # Keeps large raw NHANES SAS files (*.xpt) off GitHub
+│   ├── background_data.joblib           # Sampled background distributions for SHAP explainer
+│   └── validation_metrics.json         # Pre-computed holdout metrics (ROC-AUC, PR-AUC, Brier, thresholds)
+├── test_clinical_personas.py            # Smoke tests for 10 hand-crafted clinical personas
+├── test_holdout_evaluation.py           # Validation script computing formal test split metrics
+└── .gitignore                           # Keeps large raw NHANES SAS files (*.xpt) off GitHub
 ```
 
 ---

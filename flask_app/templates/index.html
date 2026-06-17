@@ -1,981 +1,1629 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>MedScan AI — Multi-Disease Risk Predictor</title>
-  <meta name="description" content="AI-powered prediction for Diabetes, Heart Disease, and Liver Disease using XGBoost and SHAP explainability." />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <meta name="description"
+    content="AI-powered prediction for Diabetes, Heart Disease, and Liver Disease using XGBoost and SHAP explainability." />
 
   <style>
-    /* ── Design tokens ─────────────────────────────────────────────────────── */
+    /* Load from Google Fonts */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+
     :root {
-      --bg:          #05091a;
-      --bg2:         #080f22;
-      --surface:     rgba(255,255,255,0.035);
-      --surface2:    rgba(255,255,255,0.06);
-      --border:      rgba(255,255,255,0.08);
-      --border2:     rgba(255,255,255,0.13);
-      --accent:      #00d4ff;
-      --accent2:     #6366f1;
-      --accent-glow: rgba(0,212,255,0.18);
-      --text:        #e2e8f0;
-      --muted:       #64748b;
-      --muted2:      #94a3b8;
-      --green:       #10b981;
-      --amber:       #f59e0b;
-      --red:         #ef4444;
-      --dark-red:    #dc2626;
-      --card-radius: 18px;
-      --input-radius:10px;
+      --bg: #F7F8FA;
+      /* near-white, slightly cool */
+      --surface: #FFFFFF;
+      --border: #E2E5EA;
+      --text-primary: #111318;
+      --text-secondary: #5A6270;
+      --text-muted: #9AA1AD;
+      --accent: #1A6BF0;
+      /* single blue — used sparingly */
+      --accent-light: #EBF2FF;
+      --danger: #D93025;
+      --danger-light: #FEF2F1;
+      --warning: #B45309;
+      --warning-light: #FFFBEB;
+      --success: #1A7F4B;
+      --success-light: #EDFAF3;
+      --radius-sm: 4px;
+      --radius-md: 8px;
+      --radius-lg: 12px;
     }
 
-    /* ── Reset & base ──────────────────────────────────────────────────────── */
-    *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
-
-    html { scroll-behavior: smooth; }
+    *,
+    *::before,
+    *::after {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
 
     body {
-      font-family: 'Inter', sans-serif;
+      font-family: 'Inter', system-ui, sans-serif;
       background: var(--bg);
-      color: var(--text);
-      min-height: 100vh;
-      overflow-x: hidden;
-      line-height: 1.6;
+      color: var(--text-primary);
+      line-height: 1.5;
     }
 
-    /* ── Animated ambient background ──────────────────────────────────────── */
-    .bg-glow {
-      position: fixed; inset: 0; pointer-events: none; z-index: 0;
-      background:
-        radial-gradient(ellipse 80% 60% at 10% 15%, rgba(0,212,255,0.06) 0%, transparent 70%),
-        radial-gradient(ellipse 60% 50% at 90% 85%, rgba(99,102,241,0.07) 0%, transparent 70%),
-        radial-gradient(ellipse 50% 40% at 50% 50%, rgba(16,185,129,0.03) 0%, transparent 70%);
-      animation: ambientPulse 10s ease-in-out infinite alternate;
-    }
-    @keyframes ambientPulse {
-      0%   { opacity: 0.8; transform: scale(1); }
-      100% { opacity: 1;   transform: scale(1.06) rotate(2deg); }
+    code,
+    pre,
+    .metric-value,
+    .td-mono,
+    .risk-number,
+    .risk-percent,
+    .shap-value {
+      font-family: 'JetBrains Mono', monospace;
     }
 
-    /* ── Glass utility ─────────────────────────────────────────────────────── */
-    .glass {
+    main {
+      max-width: 1100px;
+      /* Expanded slightly for landscape side-by-side view */
+      margin: 0 auto;
+      padding: 0 24px;
+      background: var(--bg);
+    }
+
+    /* 1. Header Bar */
+    .site-header {
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .header-inner {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 24px;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .logo-mark {
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--accent);
+      line-height: 1;
+    }
+
+    .logo-text {
+      font-weight: 600;
+      font-size: 16px;
+      color: var(--text-primary);
+    }
+
+    .logo-badge {
+      font-size: 11px;
+      color: var(--text-muted);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 100px;
+      padding: 2px 8px;
+      letter-spacing: 0.02em;
+    }
+
+    .header-nav {
+      display: flex;
+      gap: 24px;
+    }
+
+    .header-nav a {
+      font-size: 14px;
+      color: var(--text-secondary);
+      text-decoration: none;
+      cursor: pointer;
+    }
+
+    .header-nav a:hover {
+      color: var(--text-primary);
+    }
+
+    .header-nav a.active {
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    /* 2. Disclaimer Banner */
+    .disclaimer-bar {
+      background: var(--warning-light);
+      border-bottom: 1px solid #FDE68A;
+      color: var(--warning);
+      font-size: 13px;
+      padding: 8px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+
+    /* Hero */
+    .hero {
+      padding: 16px 0 8px 0;
+    }
+
+    .hero h1 {
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--text-primary);
+      letter-spacing: -0.02em;
+    }
+
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    /* 3. Control Panel (autofills + loaded scenario side-by-side) */
+    .control-panel {
+      display: flex;
+      align-items: center;
+      gap: 16px;
       background: var(--surface);
       border: 1px solid var(--border);
-      backdrop-filter: blur(24px);
-      -webkit-backdrop-filter: blur(24px);
-      border-radius: var(--card-radius);
+      border-radius: var(--radius-md);
+      padding: 8px 12px;
+      margin-bottom: 16px;
     }
 
-    /* ── Navigation ────────────────────────────────────────────────────────── */
-    nav {
-      position: sticky; top: 0; z-index: 200;
-      display: flex; align-items: center; gap: 0.8rem;
-      padding: 0.9rem 2rem;
-      background: rgba(5,9,26,0.75);
-      backdrop-filter: blur(24px);
-      border-bottom: 1px solid var(--border);
-    }
-    .nav-logo {
-      display: flex; align-items: center; gap: 0.6rem;
-      text-decoration: none;
-    }
-    .nav-icon {
-      width: 34px; height: 34px;
-      background: linear-gradient(135deg, var(--accent), var(--accent2));
-      border-radius: 9px;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 1rem;
-      box-shadow: 0 0 18px var(--accent-glow);
-    }
-    .nav-name {
-      font-size: 1.15rem; font-weight: 800; letter-spacing: -0.02em;
-      background: linear-gradient(135deg, #fff 10%, var(--accent) 60%, var(--accent2) 100%);
-      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-    }
-    .nav-tag {
-      margin-left: auto;
-      font-size: 0.7rem; color: var(--muted);
-      background: rgba(255,255,255,0.04);
-      padding: 0.25rem 0.7rem; border-radius: 50px;
-      border: 1px solid var(--border);
+    .control-actions {
+      display: flex;
+      gap: 8px;
+      flex-shrink: 0;
     }
 
-    /* ── Layout ────────────────────────────────────────────────────────────── */
-    main {
-      position: relative; z-index: 1;
-      max-width: 1240px; margin: 0 auto;
-      padding: 0 1.5rem 5rem;
-    }
-
-    /* ── Hero ──────────────────────────────────────────────────────────────── */
-    .hero {
-      text-align: center;
-      padding: 4rem 1rem 2.5rem;
-    }
-    .hero-badge {
-      display: inline-flex; align-items: center; gap: 0.4rem;
-      font-size: 0.72rem; font-weight: 600; text-transform: uppercase;
-      letter-spacing: 0.08em; color: var(--accent);
-      background: rgba(0,212,255,0.08);
-      border: 1px solid rgba(0,212,255,0.2);
-      padding: 0.3rem 0.9rem; border-radius: 50px;
-      margin-bottom: 1.25rem;
-    }
-    .hero h1 {
-      font-size: clamp(1.9rem, 4.5vw, 3.2rem);
-      font-weight: 900; letter-spacing: -0.03em; line-height: 1.15;
-      background: linear-gradient(135deg, #fff 0%, #c7d2fe 40%, var(--accent) 80%);
-      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-      margin-bottom: 1rem;
-    }
-    .hero p {
-      font-size: 1rem; color: var(--muted2);
-      max-width: 540px; margin: 0 auto;
-    }
-    .hero-stats {
-      display: flex; justify-content: center; gap: 2.5rem; flex-wrap: wrap;
-      margin-top: 2rem;
-    }
-    .stat { text-align: center; }
-    .stat-value { font-size: 1.3rem; font-weight: 800; color: var(--accent); }
-    .stat-label { font-size: 0.72rem; color: var(--muted); margin-top: 0.1rem; }
-
-    /* ── Error banner ──────────────────────────────────────────────────────── */
-    .error-banner {
-      display: flex; align-items: center; gap: 0.75rem;
-      background: rgba(239,68,68,0.09);
-      border: 1px solid rgba(239,68,68,0.25);
-      color: #fca5a5; padding: 1rem 1.25rem;
-      border-radius: 12px; margin-bottom: 1.5rem;
-      font-size: 0.875rem;
-    }
-
-    /* ── Form card ─────────────────────────────────────────────────────────── */
-    .form-card {
-      padding: 2rem 2rem 1.5rem;
-      margin-top: 0.5rem;
-    }
-    .form-card-header {
-      display: flex; align-items: center; gap: 0.75rem;
-      margin-bottom: 1.75rem; padding-bottom: 1.25rem;
-      border-bottom: 1px solid var(--border);
-    }
-    .form-card-header h2 {
-      font-size: 1.05rem; font-weight: 700; color: var(--text);
-    }
-    .form-card-header p { font-size: 0.8rem; color: var(--muted); margin-top: 0.15rem; }
-
-    .sections-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
-      gap: 1.25rem;
-    }
-
-    /* Liver panel spans 2 cols on wide screens */
-    @media (min-width: 960px) {
-      .liver-section { grid-column: span 2; }
-    }
-
-    /* ── Form section ──────────────────────────────────────────────────────── */
-    .fsec {
-      background: rgba(255,255,255,0.025);
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 1.25rem;
-      transition: border-color 0.2s;
-    }
-    .fsec:hover { border-color: var(--border2); }
-
-    .fsec-head {
-      display: flex; align-items: center; gap: 0.55rem;
-      margin-bottom: 1.1rem; padding-bottom: 0.8rem;
-      border-bottom: 1px solid var(--border);
-    }
-    .fsec-icon {
-      width: 28px; height: 28px; border-radius: 7px;
-      background: rgba(0,212,255,0.1);
-      display: flex; align-items: center; justify-content: center;
-      font-size: 0.85rem;
-    }
-    .fsec-title {
-      font-size: 0.75rem; font-weight: 700;
-      text-transform: uppercase; letter-spacing: 0.06em;
-      color: var(--accent);
-    }
-
-    /* ── Field ─────────────────────────────────────────────────────────────── */
-    .field { margin-bottom: 0.9rem; }
-    .field:last-child { margin-bottom: 0; }
-
-    .field label {
-      display: block; font-size: 0.78rem; font-weight: 500;
-      color: var(--muted2); margin-bottom: 0.38rem;
-    }
-
-    .input-wrap { position: relative; }
-
-    .input-wrap input,
-    .input-wrap select {
-      width: 100%; padding: 0.6rem 2.6rem 0.6rem 0.85rem;
-      background: rgba(255,255,255,0.05);
-      border: 1.5px solid rgba(255,255,255,0.1);
-      border-radius: var(--input-radius);
-      color: var(--text);
-      font-size: 0.875rem; font-family: 'Inter', sans-serif;
+    /* Button styles */
+    button, .btn {
+      font-family: 'Inter', system-ui, sans-serif;
+      font-weight: 500;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s ease;
       outline: none;
-      transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #FFFFFF;
+      border: 1px solid var(--accent);
+      border-radius: var(--radius-sm);
+      font-size: 12px;
+      font-weight: 600;
+      height: 32px;
+      padding: 0 16px;
+    }
+
+    .btn-primary:hover {
+      background: #1558c8;
+      border-color: #1558c8;
+    }
+
+    .btn-primary:active {
+      background: #0f44a0;
+      border-color: #0f44a0;
+    }
+
+    .btn-primary:disabled {
+      background: var(--text-muted);
+      border-color: var(--text-muted);
+      cursor: not-allowed;
+      opacity: 0.6;
+    }
+
+    .btn-secondary {
+      background: var(--surface);
+      color: var(--text-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: 12px;
+      height: 32px;
+      padding: 0 12px;
+    }
+
+    .btn-secondary:hover {
+      color: var(--text-primary);
+      border-color: var(--text-muted);
+      background: var(--bg);
+    }
+
+    .btn-secondary:active {
+      background: var(--border);
+    }
+
+    .scenario-details {
+      font-size: 12px;
+      color: var(--text-secondary);
+      line-height: 1.4;
+      border-left: 2px solid var(--accent);
+      padding-left: 12px;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .scenario-text {
+      color: var(--text-muted);
+    }
+
+    /* Predictor Dashboard (Form & Results Side-by-Side) */
+    .predictor-dashboard {
+      display: grid;
+      grid-template-columns: 1fr 1.3fr;
+      gap: 16px;
+      align-items: start;
+    }
+
+    /* Input Form (Compact styling to fit screen) */
+    .input-form.compact {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 16px;
+      margin: 0;
+    }
+
+    .form-section {
+      margin-bottom: 12px;
+    }
+
+    .form-section:last-of-type {
+      margin-bottom: 0;
+    }
+
+    .form-section-label {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+      padding-bottom: 4px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+    }
+
+    .field-group {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .field-group label {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-secondary);
+    }
+
+    .field-unit {
+      font-size: 10px;
+      color: var(--text-muted);
+      margin-left: 4px;
+      font-weight: 400;
+    }
+
+    .field-group input,
+    .field-group select {
+      height: 28px;
+      padding: 0 8px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: 12px;
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--text-primary);
+      background: var(--bg);
+      transition: border-color 0.15s;
+      outline: none;
       -webkit-appearance: none;
     }
-    .input-wrap select { padding-right: 0.85rem; }
-    .input-wrap select option {
-      background-color: #080f22;
-      color: var(--text);
-    }
 
-
-    .input-wrap input::placeholder { color: var(--muted); }
-
-    .input-wrap input:focus,
-    .input-wrap select:focus {
+    .field-group input:focus {
       border-color: var(--accent);
-      box-shadow: 0 0 0 3px rgba(0,212,255,0.12);
-      background: rgba(0,212,255,0.04);
+      background: var(--surface);
+      box-shadow: 0 0 0 2px var(--accent-light);
     }
-    .input-wrap input.ok  { border-color: var(--green);  }
-    .input-wrap input.warn{ border-color: var(--amber);  }
-    .input-wrap input.bad { border-color: var(--red);    }
 
-    .input-wrap input.ok:focus  { box-shadow: 0 0 0 3px rgba(16,185,129,0.12); }
-    .input-wrap input.warn:focus{ box-shadow: 0 0 0 3px rgba(245,158,11,0.12); }
-    .input-wrap input.bad:focus { box-shadow: 0 0 0 3px rgba(239,68,68,0.12);  }
+    /* Range validation states */
+    .field-group input.valid {
+      border-color: var(--success);
+    }
 
-    .unit-tag {
-      position: absolute; right: 0.75rem; top: 50%;
-      transform: translateY(-50%);
-      font-size: 0.68rem; color: var(--muted);
-      pointer-events: none; white-space: nowrap;
+    .field-group input.warning {
+      border-color: var(--warning);
+    }
+
+    .field-group input.danger {
+      border-color: var(--danger);
     }
 
     .range-hint {
-      font-size: 0.67rem; margin-top: 0.28rem;
-      color: var(--muted); transition: color 0.2s;
-      display: flex; align-items: center; gap: 0.25rem;
+      font-size: 10px;
+      color: var(--text-muted);
+      margin-top: 1px;
     }
-    .range-hint::before { content: '●'; font-size: 0.5rem; }
-    .range-hint.ok   { color: var(--green);  }
-    .range-hint.warn { color: var(--amber);  }
-    .range-hint.bad  { color: var(--red);    }
 
-    /* Two-col inner grid for liver panel */
-    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem 1rem; }
-
-    /* ── Submit button ──────────────────────────────────────────────────────── */
-    .submit-row {
-      display: flex; align-items: center; justify-content: center;
-      gap: 1.5rem; margin-top: 1.75rem; flex-wrap: wrap;
+    /* Results Placeholder */
+    .results-placeholder {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      border: 1px dashed var(--border);
+      border-radius: var(--radius-lg);
+      background: var(--surface);
+      color: var(--text-muted);
+      padding: 40px 24px;
+      text-align: center;
+      min-height: 480px;
+      height: 100%;
     }
-    .bottom-action-panel {
+
+    .results-placeholder svg {
+      color: var(--accent);
+      margin-bottom: 12px;
+      opacity: 0.8;
+    }
+
+    .results-placeholder div {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      margin-bottom: 4px;
+    }
+
+    .results-placeholder p {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    /* 4. Results Panel (Compact dashboard styling) */
+    .results-panel.compact {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      margin: 0;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .results-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .results-title {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+
+    .results-timestamp {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .disease-results {
       display: grid;
-      grid-template-columns: 1.4fr 1fr;
-      gap: 1.5rem;
-      margin-top: 1.75rem;
-      border-top: 1px solid var(--border);
-      padding-top: 1.5rem;
-      align-items: stretch;
+      grid-template-columns: repeat(3, 1fr);
+      border-bottom: 1px solid var(--border);
     }
+
+    .disease-card {
+      padding: 12px;
+      border-right: 1px solid var(--border);
+    }
+
+    .disease-card:last-child {
+      border-right: none;
+    }
+
+    .disease-card-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+
+    .disease-name {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-secondary);
+    }
+
+    .risk-label {
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      padding: 1px 6px;
+      border-radius: 100px;
+      text-transform: uppercase;
+    }
+
+    .risk-label.high,
+    .risk-label.critical {
+      background: var(--danger-light);
+      color: var(--danger);
+    }
+
+    .risk-label.border,
+    .risk-label.moderate {
+      background: var(--warning-light);
+      color: var(--warning);
+    }
+
+    .risk-label.low {
+      background: var(--success-light);
+      color: var(--success);
+    }
+
+    .risk-readout {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+
+    .risk-number {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 20px;
+      font-weight: 500;
+      color: var(--text-primary);
+      min-width: 45px;
+    }
+
+    .risk-bar-track {
+      flex: 1;
+      height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .risk-bar-fill {
+      height: 100%;
+      border-radius: 2px;
+      transition: width 0.4s ease;
+      width: 0%;
+    }
+
+    .risk-bar-fill.high,
+    .risk-bar-fill.critical {
+      background: var(--danger);
+    }
+
+    .risk-bar-fill.border,
+    .risk-bar-fill.moderate {
+      background: var(--warning);
+    }
+
+    .risk-bar-fill.low {
+      background: var(--success);
+    }
+
+    .risk-percent {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--text-muted);
+      min-width: 35px;
+      text-align: right;
+    }
+
+    .threshold-note {
+      font-size: 10px;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+      line-height: 1.4;
+    }
+
+    /* SHAP inline drivers */
+    .shap-label {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+
+    .shap-list {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .shap-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11px;
+    }
+
+    .shap-feature {
+      color: var(--text-secondary);
+    }
+
+    .shap-value {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      padding: 0px 4px;
+      border-radius: var(--radius-sm);
+    }
+
+    .shap-value.pos {
+      background: var(--danger-light);
+      color: var(--danger);
+    }
+
+    .shap-value.neg {
+      background: var(--success-light);
+      color: var(--success);
+    }
+
+    /* SHAP waterfall plots */
+    .shap-plots {
+      padding: 12px 16px;
+    }
+
+    .shap-plots-label {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+      padding-bottom: 4px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .shap-plots-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+
+    .shap-figure {
+      margin: 0;
+    }
+
+    .shap-figure figcaption {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+      font-weight: 500;
+    }
+
+    .shap-figure img {
+      width: 100%;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+    }
+
+    /* 6. Metrics Section */
+    .metrics-section {
+      margin: 24px 0 32px 0;
+    }
+
+    .section-eyebrow {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--accent);
+      display: block;
+      margin-bottom: 8px;
+    }
+
+    .section-title {
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin: 0 0 8px;
+    }
+
+    .section-desc {
+      font-size: 14px;
+      color: var(--text-secondary);
+      margin: 0 0 24px;
+      max-width: 600px;
+      line-height: 1.6;
+    }
+
+    .metrics-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+      margin-bottom: 32px;
+    }
+
+    .metrics-table th {
+      text-align: left;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      padding: 8px 16px 8px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .metrics-table td {
+      padding: 12px 16px 12px 0;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-primary);
+    }
+
+    .td-disease {
+      font-weight: 500;
+    }
+
+    .td-mono {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+    }
+
+    .calibration-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+    }
+
+    .calib-figure {
+      margin: 0;
+    }
+
+    .calib-figure img {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+    }
+
+    .calib-figure figcaption {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 8px;
+      text-align: center;
+    }
+
+    /* API Reference section */
+    .api-section {
+      margin: 24px 0 32px 0;
+    }
+
+    .api-endpoint {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 10px 16px;
+      border-radius: var(--radius-sm);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px;
+      color: var(--text-primary);
+      margin-bottom: 16px;
+    }
+
+    .api-method {
+      background: var(--accent);
+      color: #fff;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 6px;
+      border-radius: var(--radius-sm);
+    }
+
+    .api-code {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 16px;
+      border-radius: var(--radius-sm);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      color: var(--text-secondary);
+      overflow-x: auto;
+      line-height: 1.5;
+      margin-bottom: 24px;
+    }
+
+    /* Bottom Info Panel */
+    .info-panel {
+      margin-top: 24px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+      text-align: center;
+    }
+
+    .info-badge {
+      display: inline-block;
+      font-size: 10px;
+      color: var(--accent);
+      background: var(--accent-light);
+      border-radius: 100px;
+      padding: 2px 10px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .info-desc {
+      font-size: 12px;
+      color: var(--text-secondary);
+      max-width: 600px;
+      margin: 0 auto 16px auto;
+      line-height: 1.5;
+    }
+
+    .info-stats {
+      display: flex;
+      justify-content: center;
+      gap: 24px;
+      flex-wrap: wrap;
+    }
+
+    .info-stat {
+      text-align: center;
+    }
+
+    .info-stat-val {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .info-stat-label {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    /* 7. Footer */
+    .site-footer {
+      border-top: 1px solid var(--border);
+      padding: 16px 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 32px;
+    }
+
+    .site-footer a {
+      color: var(--text-muted);
+      text-decoration: none;
+    }
+
+    .site-footer a:hover {
+      color: var(--text-primary);
+    }
+
+    /* Alert Banner */
+    .error-banner {
+      background: var(--danger-light);
+      border: 1px solid #FCA5A5;
+      color: var(--danger);
+      padding: 10px 14px;
+      border-radius: var(--radius-md);
+      margin-bottom: 16px;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* Inline Loading */
+    .loading-indicator {
+      display: none;
+      background: var(--accent-light);
+      border: 1px solid var(--accent);
+      color: var(--accent);
+      padding: 10px 14px;
+      border-radius: var(--radius-md);
+      margin-bottom: 16px;
+      font-size: 12px;
+      text-align: center;
+      line-height: 1.5;
+    }
+
+    /* 8. Responsive — Mobile Breakpoint */
     @media (max-width: 768px) {
-      .bottom-action-panel {
+      .predictor-dashboard {
         grid-template-columns: 1fr;
       }
-    }
-    .btn-predict {
-      display: inline-flex; align-items: center; gap: 0.7rem;
-      padding: 0.85rem 2.4rem;
-      background: linear-gradient(135deg, var(--accent) 0%, var(--accent2) 100%);
-      color: #fff; border: none; border-radius: 50px;
-      font-size: 0.95rem; font-weight: 700; font-family: 'Inter', sans-serif;
-      cursor: pointer; letter-spacing: 0.01em;
-      box-shadow: 0 4px 28px var(--accent-glow);
-      transition: transform 0.18s, box-shadow 0.18s;
-    }
-    .btn-predict:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 8px 40px rgba(0,212,255,0.45);
-    }
-    .btn-predict:active { transform: translateY(0); }
 
-    .btn-autofill {
-      display: inline-flex; align-items: center; gap: 0.5rem;
-      padding: 0.85rem 1.6rem;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px dashed var(--border);
-      border-radius: 50px;
-      color: var(--text);
-      font-size: 0.88rem; font-weight: 600; font-family: 'Inter', sans-serif;
-      cursor: pointer;
-      transition: background 0.18s, border-color 0.18s, transform 0.18s;
-    }
-    .btn-autofill:hover {
-      background: rgba(255, 255, 255, 0.12);
-      border-color: var(--accent);
-      transform: translateY(-2px);
-    }
-    .btn-autofill:active { transform: translateY(0); }
+      .control-panel {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+      }
 
-    .submit-note { font-size: 0.72rem; color: var(--muted); }
+      .control-actions {
+        justify-content: space-between;
+      }
 
-    /* ── Loading overlay ────────────────────────────────────────────────────── */
-    #loadingOverlay {
-      display: none; position: fixed; inset: 0; z-index: 9999;
-      background: rgba(5,9,26,0.88); backdrop-filter: blur(12px);
-      flex-direction: column; align-items: center; justify-content: center;
-      gap: 1.2rem;
-    }
-    #loadingOverlay.active { display: flex; }
+      .scenario-details {
+        border-left: none;
+        padding-left: 0;
+        border-top: 2px solid var(--accent);
+        padding-top: 6px;
+      }
 
-    .loader-ring {
-      width: 60px; height: 60px; position: relative;
-    }
-    .loader-ring::after {
-      content: '';
-      position: absolute; inset: 0;
-      border-radius: 50%;
-      border: 3px solid transparent;
-      border-top-color: var(--accent);
-      border-right-color: rgba(0,212,255,0.3);
-      animation: spin 0.75s linear infinite;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
+      .disease-results {
+        grid-template-columns: 1fr;
+      }
 
-    .loader-label { font-size: 0.9rem; color: var(--muted2); text-align: center; }
-    .loader-sub { font-size: 0.75rem; color: var(--muted); text-align: center; }
+      .disease-card {
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+      }
 
-    /* ── Results section ────────────────────────────────────────────────────── */
-    .results-header {
-      display: flex; align-items: center; gap: 1rem;
-      margin: 3rem 0 1.5rem;
-    }
-    .results-header h2 { font-size: 1.4rem; font-weight: 800; white-space: nowrap; }
-    .hr-line { flex: 1; height: 1px; background: var(--border); }
+      .shap-plots-grid {
+        grid-template-columns: 1fr;
+      }
 
-    .results-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
-      gap: 1.5rem;
-    }
+      .calibration-grid {
+        grid-template-columns: 1fr;
+      }
 
-    /* ── Result card ────────────────────────────────────────────────────────── */
-    .result-card {
-      padding: 1.75rem;
-      display: flex; flex-direction: column; gap: 1.4rem;
-      transition: transform 0.2s;
-      animation: cardReveal 0.5s ease both;
-    }
-    .result-card:nth-child(2) { animation-delay: 0.08s; }
-    .result-card:nth-child(3) { animation-delay: 0.16s; }
+      .header-nav {
+        display: none;
+      }
 
-    @keyframes cardReveal {
-      from { opacity: 0; transform: translateY(20px); }
-      to   { opacity: 1; transform: translateY(0); }
-    }
-
-    /* Disease header row */
-    .d-header {
-      display: flex; align-items: center; justify-content: space-between;
-    }
-    .d-name {
-      display: flex; align-items: center; gap: 0.55rem;
-      font-size: 1.05rem; font-weight: 700;
-    }
-    .d-icon {
-      width: 36px; height: 36px; border-radius: 10px;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 1.1rem;
-    }
-    .risk-pill {
-      padding: 0.22rem 0.75rem; border-radius: 50px;
-      font-size: 0.68rem; font-weight: 700;
-      text-transform: uppercase; letter-spacing: 0.06em;
-    }
-
-    /* Divider */
-    .c-divider { height: 1px; background: var(--border); }
-
-    /* ── Probability gauge ──────────────────────────────────────────────────── */
-    .gauge-row {
-      display: flex; align-items: center; gap: 1.5rem;
-    }
-    .gauge-svg-wrap { flex-shrink: 0; }
-    .gauge-svg { width: 115px; height: 115px; }
-
-    .gauge-bg { fill: none; stroke: rgba(255,255,255,0.05); stroke-width: 9; }
-    .gauge-arc {
-      fill: none; stroke-width: 9; stroke-linecap: round;
-      transform-origin: 50px 50px;
-      transform: rotate(-90deg);
-      transition: stroke-dashoffset 1.4s cubic-bezier(.4,0,.2,1);
-    }
-
-    .gauge-info { flex: 1; }
-    .prob-big {
-      font-size: 2.2rem; font-weight: 900; line-height: 1;
-      letter-spacing: -0.03em;
-    }
-    .prob-sub { font-size: 0.73rem; color: var(--muted); margin-top: 0.2rem; }
-    .thresh-chip {
-      display: inline-block; margin-top: 0.55rem;
-      font-size: 0.67rem; color: var(--muted2);
-      background: rgba(255,255,255,0.05);
-      border: 1px solid var(--border);
-      padding: 0.2rem 0.55rem; border-radius: 6px;
-    }
-
-    /* ── Top factors ────────────────────────────────────────────────────────── */
-    .factors-block h4 {
-      font-size: 0.7rem; font-weight: 700;
-      text-transform: uppercase; letter-spacing: 0.06em;
-      color: var(--muted); margin-bottom: 0.85rem;
-    }
-    .factor-group-label {
-      font-size: 0.67rem; color: var(--muted); margin-bottom: 0.4rem;
-      display: flex; align-items: center; gap: 0.3rem;
-    }
-    .factor-row {
-      display: flex; align-items: center; gap: 0.55rem;
-      margin-bottom: 0.42rem; font-size: 0.78rem;
-    }
-    .f-arrow { font-size: 0.6rem; width: 14px; flex-shrink: 0; }
-    .f-name {
-      flex: 1; color: var(--muted2);
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-      font-size: 0.75rem;
-    }
-    .f-track {
-      width: 72px; height: 5px;
-      background: rgba(255,255,255,0.06);
-      border-radius: 3px; overflow: hidden; flex-shrink: 0;
-    }
-    .f-bar { height: 100%; border-radius: 3px; transition: width 0.8s ease; }
-    .f-val { font-size: 0.67rem; width: 40px; text-align: right; flex-shrink: 0; }
-
-    /* ── SHAP plot ──────────────────────────────────────────────────────────── */
-    .shap-block h4 {
-      font-size: 0.7rem; font-weight: 700;
-      text-transform: uppercase; letter-spacing: 0.06em;
-      color: var(--muted); margin-bottom: 0.75rem;
-    }
-    .shap-img-wrap {
-      border-radius: 10px; overflow: hidden;
-      border: 1px solid rgba(255,255,255,0.07);
-    }
-    .shap-img { width: 100%; display: block; }
-
-    /* ── Disclaimer ─────────────────────────────────────────────────────────── */
-    .disclaimer {
-      margin-top: 3.5rem;
-      text-align: center; font-size: 0.7rem; color: var(--muted);
-      padding: 1.25rem; border-top: 1px solid var(--border);
-      line-height: 1.8;
-    }
-
-    /* ── Responsive ─────────────────────────────────────────────────────────── */
-    @media (max-width: 700px) {
-      .sections-grid, .results-grid { grid-template-columns: 1fr; }
-      .two-col { grid-template-columns: 1fr; }
-      .hero-stats { gap: 1.5rem; }
-      .nav-tag { display: none; }
+      .site-footer {
+        flex-direction: column;
+        gap: 8px;
+        text-align: center;
+      }
     }
   </style>
 </head>
 
 <body>
-  <!-- Ambient glow -->
-  <div class="bg-glow"></div>
 
-  <!-- Loading overlay -->
-  <div id="loadingOverlay">
-    <div class="loader-ring"></div>
-    <p class="loader-label">Computing AI Risk Assessment…</p>
-    <p class="loader-sub">Running SHAP analysis for all 3 models — this takes ~30 s</p>
+  <!-- 1. Header Bar -->
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="logo">
+        <span class="logo-mark">+</span>
+        <span class="logo-text">MedScan AI</span>
+        <span class="logo-badge">v1.1 · Educational</span>
+      </div>
+      <nav class="header-nav">
+        <a id="header-link-predictor" class="active" onclick="switchTab(this, 'predictor')">Predictor</a>
+        <a id="header-link-metrics" onclick="switchTab(this, 'metrics')">Validation</a>
+        <a id="header-link-api" onclick="switchTab(this, 'api')">API</a>
+        <a href="https://github.com/darknight0847" target="_blank">GitHub ↗</a>
+        <a href="/MODEL_CARD.md" target="_blank">Model Card ↗</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- 2. Disclaimer Banner -->
+  <div class="disclaimer-bar">
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+      <circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5" />
+      <path d="M8 5v4M8 11v.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+    </svg>
+    For educational and research purposes only. Not a substitute for clinical diagnosis or medical advice.
   </div>
 
-  <!-- Navigation -->
-  <nav>
-    <a class="nav-logo" href="/">
-      <div class="nav-icon">⚕</div>
-      <span class="nav-name">MedScan AI</span>
-    </a>
-    <span class="nav-tag">Educational Use Only · Not Medical Advice</span>
-  </nav>
-
   <main>
-    <!-- Hero -->
+    <!-- Hero Header -->
     <div class="hero">
-      <div class="hero-badge">⚡ XGBoost + SHAP Explainability</div>
-      <h1>Multi-Disease Health<br>Risk Predictor</h1>
-      <p>Enter patient vitals and lab values to receive AI-powered risk scores for Diabetes, Heart Disease, and Liver Disease — with full SHAP explainability.</p>
-      <div class="hero-stats">
-        <div class="stat"><div class="stat-value">ROC 0.91</div><div class="stat-label">Diabetes</div></div>
-        <div class="stat"><div class="stat-value">ROC 0.84</div><div class="stat-label">Heart Disease</div></div>
-        <div class="stat"><div class="stat-value">ROC 0.75</div><div class="stat-label">Liver Disease</div></div>
-        <div class="stat"><div class="stat-value">9,254</div><div class="stat-label">NHANES Records</div></div>
+      <h1>MedScanAI</h1>
+    </div>
+
+    <!-- ── TAB 1: PREDICTOR ENGINE ──────────────────────────────────────── -->
+    <div id="tab-content-predictor" class="tab-content active">
+
+      <!-- Error Banner (if Jinja throws one) -->
+      {% if error %}
+      <div class="error-banner">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5" />
+          <path d="M8 5v4M8 11v.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+        </svg>
+        <strong>Prediction Error:</strong> {{ error }}
       </div>
-    </div>
+      {% endif %}
 
-    <!-- Error -->
-    {% if error %}
-    <div class="error-banner">
-      <span style="font-size:1.1rem;">⚠️</span>
-      <div><strong>Prediction Error:</strong> {{ error }}</div>
-    </div>
-    {% endif %}
+      <div class="loading-indicator" id="loading-indicator">
+        <strong>Computing AI Risk Assessment...</strong><br>
+        Running SHAP analysis for all 3 models — this dynamically calculates feature importance levels. Please wait
+        ~15–30 seconds.
+      </div>
 
-    <!-- ── Input Form ─────────────────────────────────────────────────────── -->
-    <div class="glass form-card">
-      <div class="form-card-header">
-        <div style="font-size:1.3rem;">📋</div>
-        <div>
-          <h2>Patient Vitals &amp; Lab Values</h2>
-          <p>All fields required. Ideal ranges shown below each input. Values in green are within normal range.</p>
+      <!-- 3. Control Panel (actions + loaded scenario side-by-side) -->
+      <div class="control-panel">
+        <div class="control-actions">
+          <button type="button" class="btn-secondary" onclick="loadRandomCase()">Load Random Case</button>
+          <button type="submit" form="risk-form" class="btn-primary">Assess Risk →</button>
+        </div>
+        <div id="caseStudyExpectation" class="scenario-details">
+          {% if loaded_case_name and loaded_case_desc %}
+          <strong>Loaded:</strong> {{ loaded_case_name }} &middot; <span class="scenario-text">{{ loaded_case_desc |
+            safe }}</span>
+          {% else %}
+          Click <strong>Load Random Case</strong> to test clinical scenarios.
+          {% endif %}
         </div>
       </div>
 
-      <form method="POST" id="predictForm" onsubmit="showLoading()">
-        <input type="hidden" name="loaded_case_name" id="loadedCaseName" value="{{ loaded_case_name or '' }}">
-        <input type="hidden" name="loaded_case_desc" id="loadedCaseDesc" value="{{ loaded_case_desc or '' }}">
-        <div class="sections-grid">
+      <!-- Predictor Dashboard Grid Layout -->
+      <div class="predictor-dashboard">
 
-          <!-- Demographics -->
-          <div class="fsec">
-            <div class="fsec-head">
-              <div class="fsec-icon">👤</div>
-              <span class="fsec-title">Patient Demographics</span>
-            </div>
-            <div class="field">
-              <label for="age">Age</label>
-              <div class="input-wrap">
-                <input type="number" id="age" name="age" min="1" max="100" step="1"
-                  value="{{ form_data.get('age','') }}" placeholder="45"
-                  oninput="checkRange(this,18,65,'ok')" required />
-                <span class="unit-tag">yrs</span>
-              </div>
-              <div class="range-hint" id="age-hint">Ideal: 18–65 years</div>
-            </div>
-            <div class="field">
-              <label for="gender">Biological Sex</label>
-              <div class="input-wrap">
-                <select id="gender" name="gender" required>
-                  <option value="" disabled {% if not form_data.get('gender') %}selected{% endif %}>Select…</option>
-                  <option value="1" {% if form_data.get('gender')=='1' %}selected{% endif %}>Male</option>
-                  <option value="2" {% if form_data.get('gender')=='2' %}selected{% endif %}>Female</option>
-                </select>
-              </div>
-              <div class="range-hint">Used by Heart Disease model</div>
-            </div>
-          </div>
+        <!-- Left Column: Compact Form -->
+        <div class="form-container">
+          <form id="risk-form" class="input-form compact" method="POST" action="/">
+            <input type="hidden" name="loaded_case_name" id="loadedCaseName" value="{{ loaded_case_name or '' }}">
+            <input type="hidden" name="loaded_case_desc" id="loadedCaseDesc" value="{{ loaded_case_desc or '' }}">
 
-          <!-- Body Measurements -->
-          <div class="fsec">
-            <div class="fsec-head">
-              <div class="fsec-icon">⚖️</div>
-              <span class="fsec-title">Body Measurements</span>
-            </div>
-            <div class="field">
-              <label for="bmi">Body Mass Index (BMI)</label>
-              <div class="input-wrap">
-                <input type="number" id="bmi" name="bmi" min="10" max="70" step="0.1"
-                  value="{{ form_data.get('bmi','') }}" placeholder="23.5"
-                  oninput="checkRange(this,18.5,24.9,'ok')" required />
-                <span class="unit-tag">kg/m²</span>
-              </div>
-              <div class="range-hint" id="bmi-hint">Ideal: 18.5–24.9 (normal weight)</div>
-            </div>
-            <div class="field">
-              <label for="waist">Waist Circumference</label>
-              <div class="input-wrap">
-                <input type="number" id="waist" name="waist" min="40" max="200" step="0.1"
-                  value="{{ form_data.get('waist','') }}" placeholder="88.0"
-                  oninput="checkRangeMax(this,94,'ok')" required />
-                <span class="unit-tag">cm</span>
-              </div>
-              <div class="range-hint" id="waist-hint">Ideal: &lt;94 cm (M) / &lt;80 cm (F)</div>
-            </div>
-          </div>
+            <div class="form-section">
+              <div class="form-section-label">Anthropometrics & Demographics</div>
+              <div class="form-grid">
 
-          <!-- Cardiovascular -->
-          <div class="fsec">
-            <div class="fsec-head">
-              <div class="fsec-icon">❤️</div>
-              <span class="fsec-title">Cardiovascular</span>
-            </div>
-            <div class="field">
-              <label for="sys_bp">Systolic Blood Pressure</label>
-              <div class="input-wrap">
-                <input type="number" id="sys_bp" name="sys_bp" min="60" max="250" step="1"
-                  value="{{ form_data.get('sys_bp','') }}" placeholder="118"
-                  oninput="checkRange(this,90,120,'ok')" required />
-                <span class="unit-tag">mmHg</span>
-              </div>
-              <div class="range-hint" id="sys_bp-hint">Ideal: 90–120 mmHg (normal)</div>
-            </div>
-            <div class="field">
-              <label for="cholesterol">Total Cholesterol</label>
-              <div class="input-wrap">
-                <input type="number" id="cholesterol" name="cholesterol" min="50" max="500" step="1"
-                  value="{{ form_data.get('cholesterol','') }}" placeholder="175"
-                  oninput="checkRangeMax(this,200,'ok')" required />
-                <span class="unit-tag">mg/dL</span>
-              </div>
-              <div class="range-hint" id="cholesterol-hint">Ideal: &lt;200 mg/dL (desirable)</div>
-            </div>
-          </div>
-
-          <!-- Blood Glucose -->
-          <div class="fsec">
-            <div class="fsec-head">
-              <div class="fsec-icon">🩸</div>
-              <span class="fsec-title">Blood Glucose</span>
-            </div>
-            <div class="field">
-              <label for="glucose">Fasting Blood Glucose</label>
-              <div class="input-wrap">
-                <input type="number" id="glucose" name="glucose" min="40" max="700" step="1"
-                  value="{{ form_data.get('glucose','') }}" placeholder="95"
-                  oninput="checkRange(this,70,99,'ok')" required />
-                <span class="unit-tag">mg/dL</span>
-              </div>
-              <div class="range-hint" id="glucose-hint">Ideal: 70–99 mg/dL (normal fasting)</div>
-            </div>
-            <div style="margin-top:0.6rem; padding:0.7rem 0.85rem;
-              background:rgba(0,212,255,0.04); border:1px dashed rgba(0,212,255,0.15);
-              border-radius:8px; font-size:0.72rem; color:var(--muted2); line-height:1.6;">
-              <strong style="color:var(--accent);">Auto-derived:</strong> Blood Glucose in mmol/L
-              = mg/dL × 0.0555 (computed internally for models).
-            </div>
-          </div>
-
-          <!-- Kidney Function -->
-          <div class="fsec">
-            <div class="fsec-head">
-              <div class="fsec-icon">🫘</div>
-              <span class="fsec-title">Kidney Function</span>
-            </div>
-            <div class="field">
-              <label for="acr">Albumin-to-Creatinine Ratio (ACR)</label>
-              <div class="input-wrap">
-                <input type="number" id="acr" name="acr" min="0" max="3000" step="0.1"
-                  value="{{ form_data.get('acr','') }}" placeholder="8.2"
-                  oninput="checkRangeMax(this,30,'ok')" required />
-                <span class="unit-tag">mg/g</span>
-              </div>
-              <div class="range-hint" id="acr-hint">Ideal: &lt;30 mg/g (normal)</div>
-            </div>
-            <div class="field">
-              <label for="albumin">Urine Albumin</label>
-              <div class="input-wrap">
-                <input type="number" id="albumin" name="albumin" min="0" max="3000" step="0.1"
-                  value="{{ form_data.get('albumin','') }}" placeholder="7.5"
-                  oninput="checkRangeMax(this,30,'ok')" required />
-                <span class="unit-tag">µg/mL</span>
-              </div>
-              <div class="range-hint" id="albumin-hint">Ideal: &lt;30 µg/mL (normal)</div>
-            </div>
-          </div>
-
-          <!-- Liver Panel (wider) -->
-          <div class="fsec liver-section">
-            <div class="fsec-head">
-              <div class="fsec-icon">🫀</div>
-              <span class="fsec-title">Liver Enzyme Panel — from BIOPRO</span>
-            </div>
-            <div class="two-col">
-              <div class="field">
-                <label for="alt">ALT — Alanine Aminotransferase</label>
-                <div class="input-wrap">
-                  <input type="number" id="alt" name="alt" min="0" max="1000" step="0.1"
-                    value="{{ form_data.get('alt','') }}" placeholder="25"
-                    oninput="checkRange(this,7,56,'ok')" required />
-                  <span class="unit-tag">U/L</span>
+                <div class="field-group">
+                  <label for="age">Age <span class="field-unit">(years)</span></label>
+                  <input type="number" id="age" name="age" min="18" max="85" step="1" required placeholder="e.g. 45"
+                    value="{{ form_data.get('age','') }}" oninput="validateField(this)">
+                  <div class="range-hint">Ideal: 18–65 · Valid: 18–85</div>
                 </div>
-                <div class="range-hint" id="alt-hint">Ideal: 7–56 U/L</div>
-              </div>
-              <div class="field">
-                <label for="ast">AST — Aspartate Aminotransferase</label>
-                <div class="input-wrap">
-                  <input type="number" id="ast" name="ast" min="0" max="1000" step="0.1"
-                    value="{{ form_data.get('ast','') }}" placeholder="22"
-                    oninput="checkRange(this,10,40,'ok')" required />
-                  <span class="unit-tag">U/L</span>
+
+                <div class="field-group">
+                  <label for="sex">Biological Sex</label>
+                  <select id="sex" name="gender" required>
+                    <option value="" disabled {% if not form_data.get('gender') %}selected{% endif %}>Select sex...
+                    </option>
+                    <option value="1" {% if form_data.get('gender')=='1' %}selected{% endif %}>Male</option>
+                    <option value="2" {% if form_data.get('gender')=='2' %}selected{% endif %}>Female</option>
+                  </select>
+                  <div class="range-hint">Required for Heart Disease model</div>
                 </div>
-                <div class="range-hint" id="ast-hint">Ideal: 10–40 U/L</div>
-              </div>
-              <div class="field">
-                <label for="ggt">GGT — Gamma-Glutamyl Transferase</label>
-                <div class="input-wrap">
-                  <input type="number" id="ggt" name="ggt" min="0" max="2000" step="0.1"
-                    value="{{ form_data.get('ggt','') }}" placeholder="18"
-                    oninput="checkRange(this,8,61,'ok')" required />
-                  <span class="unit-tag">U/L</span>
+
+                <div class="field-group">
+                  <label for="bmi">Body Mass Index <span class="field-unit">(kg/m²)</span></label>
+                  <input type="number" id="bmi" name="bmi" min="10" max="70" step="0.1" required placeholder="e.g. 23.5"
+                    value="{{ form_data.get('bmi','') }}" oninput="validateField(this)">
+                  <div class="range-hint">Ideal: 18.5–24.9 · Valid: 10–70</div>
                 </div>
-                <div class="range-hint" id="ggt-hint">Ideal: 8–61 U/L</div>
-              </div>
-              <div class="field">
-                <label for="alp">ALP — Alkaline Phosphatase</label>
-                <div class="input-wrap">
-                  <input type="number" id="alp" name="alp" min="0" max="1000" step="0.1"
-                    value="{{ form_data.get('alp','') }}" placeholder="78"
-                    oninput="checkRange(this,44,147,'ok')" required />
-                  <span class="unit-tag">U/L</span>
+
+                <div class="field-group">
+                  <label for="waist_cm">Waist Circumference <span class="field-unit">(cm)</span></label>
+                  <input type="number" id="waist_cm" name="waist" min="50" max="200" step="0.1" required
+                    placeholder="e.g. 88.0" value="{{ form_data.get('waist','') }}" oninput="validateField(this)">
+                  <div class="range-hint">Ideal: &lt;94 cm (M) / &lt;80 cm (F)</div>
                 </div>
-                <div class="range-hint" id="alp-hint">Ideal: 44–147 U/L</div>
-              </div>
-              <div class="field">
-                <label for="bilirubin">Total Bilirubin</label>
-                <div class="input-wrap">
-                  <input type="number" id="bilirubin" name="bilirubin" min="0" max="30" step="0.01"
-                    value="{{ form_data.get('bilirubin','') }}" placeholder="0.6"
-                    oninput="checkRange(this,0.1,1.2,'ok')" required />
-                  <span class="unit-tag">mg/dL</span>
-                </div>
-                <div class="range-hint" id="bilirubin-hint">Ideal: 0.1–1.2 mg/dL</div>
-              </div>
-              <div class="field">
-                <label for="serum_albumin">Serum Albumin</label>
-                <div class="input-wrap">
-                  <input type="number" id="serum_albumin" name="serum_albumin" min="0" max="10" step="0.01"
-                    value="{{ form_data.get('serum_albumin','') }}" placeholder="4.2"
-                    oninput="checkRange(this,3.5,5.0,'ok')" required />
-                  <span class="unit-tag">g/dL</span>
-                </div>
-                <div class="range-hint" id="serum_albumin-hint">Ideal: 3.5–5.0 g/dL</div>
+
               </div>
             </div>
+
+            <div class="form-section">
+              <div class="form-section-label">Metabolic Panel</div>
+              <div class="form-grid">
+
+                <div class="field-group">
+                  <label for="fasting_glucose">Fasting Glucose <span class="field-unit">(mg/dL)</span></label>
+                  <input type="number" id="fasting_glucose" name="glucose" min="50" max="500" step="0.1" required
+                    placeholder="e.g. 95" value="{{ form_data.get('glucose','') }}" oninput="validateField(this)">
+                  <div class="range-hint">Ideal: 70–99 · Valid: 50–500</div>
+                </div>
+
+                <div class="field-group">
+                  <label for="systolic_bp">Systolic Blood Pressure <span class="field-unit">(mmHg)</span></label>
+                  <input type="number" id="systolic_bp" name="sys_bp" min="70" max="220" step="1" required
+                    placeholder="e.g. 118" value="{{ form_data.get('sys_bp','') }}" oninput="validateField(this)">
+                  <div class="range-hint">Ideal: 90–120 · Valid: 70–220</div>
+                </div>
+
+                <div class="field-group">
+                  <label for="acr">Albumin-to-Creatinine Ratio <span class="field-unit">(mg/g)</span></label>
+                  <input type="number" id="acr" name="acr" min="0" max="5000" step="0.1" required placeholder="e.g. 8.2"
+                    value="{{ form_data.get('acr','') }}" oninput="validateField(this)">
+                  <div class="range-hint">Ideal: &lt;30 · Valid: 0–5000</div>
+                </div>
+
+                <div class="field-group">
+                  <label for="total_cholesterol">Total Cholesterol <span class="field-unit">(mg/dL)</span></label>
+                  <input type="number" id="total_cholesterol" name="cholesterol" min="50" max="500" step="1" required
+                    placeholder="e.g. 175" value="{{ form_data.get('cholesterol','') }}" oninput="validateField(this)">
+                  <div class="range-hint">Ideal: &lt;200 · Valid: 50–500</div>
+                </div>
+
+              </div>
+            </div>
+
+            <div class="form-section">
+              <div class="form-section-label">Liver & Renal Biomarkers</div>
+              <div class="form-grid">
+
+                <div class="field-group">
+                  <label for="urine_albumin">Urine Albumin <span class="field-unit">(µg/mL)</span></label>
+                  <input type="number" id="urine_albumin" name="albumin" min="0" max="500" step="0.1" required
+                    placeholder="e.g. 7.5" value="{{ form_data.get('albumin','') }}" oninput="validateField(this)">
+                  <div class="range-hint">Ideal: &lt;30 · Valid: 0–500</div>
+                </div>
+
+                <div class="field-group">
+                  <label for="alt">ALT — Alanine Aminotransferase <span class="field-unit">(U/L)</span></label>
+                  <input type="number" id="alt" name="alt" min="0" max="500" step="0.1" required placeholder="e.g. 25"
+                    value="{{ form_data.get('alt','') }}" oninput="validateField(this)">
+                  <div class="range-hint">Ideal: 7–56 · Valid: 0–500</div>
+                </div>
+
+                <div class="field-group">
+                  <label for="ast">AST — Aspartate Aminotransferase <span class="field-unit">(U/L)</span></label>
+                  <input type="number" id="ast" name="ast" min="0" max="500" step="0.1" required placeholder="e.g. 22"
+                    value="{{ form_data.get('ast','') }}" oninput="validateField(this)">
+                  <div class="range-hint">Ideal: 10–40 · Valid: 0–500</div>
+                </div>
+
+                <div class="field-group">
+                  <label for="ggt">GGT — Gamma-Glutamyl Transferase <span class="field-unit">(U/L)</span></label>
+                  <input type="number" id="ggt" name="ggt" min="0" max="500" step="0.1" required placeholder="e.g. 18"
+                    value="{{ form_data.get('ggt','') }}" oninput="validateField(this)">
+                  <div class="range-hint">Ideal: 8–61 · Valid: 0–500</div>
+                </div>
+
+                <div class="field-group">
+                  <label for="alp">ALP — Alkaline Phosphatase <span class="field-unit">(U/L)</span></label>
+                  <input type="number" id="alp" name="alp" min="0" max="500" step="0.1" required placeholder="e.g. 78"
+                    value="{{ form_data.get('alp','') }}" oninput="validateField(this)">
+                  <div class="range-hint">Ideal: 44–147 · Valid: 0–500</div>
+                </div>
+
+                <div class="field-group">
+                  <label for="total_bilirubin">Total Bilirubin <span class="field-unit">(mg/dL)</span></label>
+                  <input type="number" id="total_bilirubin" name="bilirubin" min="0" max="30" step="0.01" required
+                    placeholder="e.g. 0.6" value="{{ form_data.get('bilirubin','') }}" oninput="validateField(this)">
+                  <div class="range-hint">Ideal: 0.1–1.2 · Valid: 0–30</div>
+                </div>
+
+                <div class="field-group">
+                  <label for="serum_albumin">Serum Albumin <span class="field-unit">(g/dL)</span></label>
+                  <input type="number" id="serum_albumin" name="serum_albumin" min="1" max="6" step="0.01" required
+                    placeholder="e.g. 4.2" value="{{ form_data.get('serum_albumin','') }}"
+                    oninput="validateField(this)">
+                  <div class="range-hint">Ideal: 3.5–5.0 · Valid: 1–6</div>
+                </div>
+
+              </div>
+            </div>
+          </form>
+        </div>
+
+        <!-- Right Column: Placeholder & Voltmeter Results Panel -->
+        <div class="results-container">
+
+          <!-- Results Placeholder (shown before prediction) -->
+          <div id="results-placeholder" class="results-placeholder"
+            style="{% if results %}display:none;{% else %}display:flex;{% endif %}">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+            </svg>
+            <div>Awaiting clinical inputs...</div>
+            <p>Fill in patient details on the left and click Assess Risk.</p>
           </div>
 
-        </div><!-- sections-grid -->
+          <!-- Results Panel -->
+          <div id="results-panel" class="results-panel compact"
+            style="{% if results %}display:block;{% else %}display:none;{% endif %}">
+            <div class="results-header">
+              <span class="results-title">Risk Assessment</span>
+              <span class="results-timestamp" id="results-timestamp">
+                {% if results %}Pre-rendered via POST{% endif %}
+              </span>
+            </div>
 
-        <!-- Bottom Action Panel (Case Studies + Predict Button Side-by-Side) -->
-        <div class="bottom-action-panel">
-          
-          <!-- Case Studies Block -->
-          <div style="padding: 1rem; background: rgba(0,212,255,0.02); border: 1px dashed var(--border); border-radius: 12px; display: flex; flex-direction: column; justify-content: space-between; gap: 0.75rem;">
-            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;">
-              <div style="display: flex; align-items: center; gap: 0.5rem;">
-                <span style="font-size:1.1rem;">🧪</span>
-                <strong style="font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent);">Interactive Case Studies</strong>
+            <div class="disease-results">
+
+              <!-- Diabetes Card -->
+              <div class="disease-card" id="card-diabetes">
+                <div class="disease-card-header">
+                  <span class="disease-name">Diabetes</span>
+                  <span class="risk-label {% if results %}{{ results.Diabetes.level }}{% endif %}" id="label-diabetes">
+                    {% if results %}{{ results.Diabetes.label }}{% else %}—{% endif %}
+                  </span>
+                </div>
+                <div class="risk-readout">
+                  <span class="risk-number" id="prob-diabetes">
+                    {% if results %}{{ "%.3f"|format(results.Diabetes.prob) }}{% else %}—{% endif %}
+                  </span>
+                  <div class="risk-bar-track">
+                    <div class="risk-bar-fill {% if results %}{{ results.Diabetes.level }}{% endif %}" id="bar-diabetes"
+                      style="{% if results %}width: {{ results.Diabetes.prob_pct }}%;{% endif %}"></div>
+                  </div>
+                  <span class="risk-percent" id="pct-diabetes">
+                    {% if results %}{{ results.Diabetes.prob_pct }}%{% else %}—{% endif %}
+                  </span>
+                </div>
+                <div class="threshold-note" id="thresh-diabetes">
+                  {% if results %}Threshold: {{ results.Diabetes.thresh }} · Alert if &ge; {{
+                  results.Diabetes.thresh_pct }}%{% endif %}
+                </div>
+                <div class="shap-section">
+                  <div class="shap-label">Key drivers</div>
+                  <div class="shap-list" id="shap-diabetes">
+                    {% if results %}
+                    {% for fname, fval, fpct in results.Diabetes.pos %}
+                    <div class="shap-item">
+                      <span class="shap-feature">{{ fname.split(' — ')[0].replace('_', ' ') }}</span>
+                      <span class="shap-value pos">+{{ '%.3f'|format(fval) }}</span>
+                    </div>
+                    {% endfor %}
+                    {% for fname, fval, fpct in results.Diabetes.neg %}
+                    <div class="shap-item">
+                      <span class="shap-feature">{{ fname.split(' — ')[0].replace('_', ' ') }}</span>
+                      <span class="shap-value neg">{{ '%.3f'|format(fval) }}</span>
+                    </div>
+                    {% endfor %}
+                    {% endif %}
+                  </div>
+                </div>
               </div>
-              <button type="button" class="btn-autofill" style="padding: 0.45rem 1.1rem; font-size: 0.75rem;" onclick="loadRandomCase()">
-                🎲 Load Random Case
-              </button>
-            </div>
-            <div id="caseStudyExpectation" style="padding: 0.8rem 1rem; background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 8px; font-size: 0.8rem; color: var(--muted2); line-height: 1.5; border-left: 3px solid var(--accent); flex: 1; display: flex; flex-direction: column; justify-content: center;">
-              {% if loaded_case_name and loaded_case_desc %}
-                <strong>Loaded Scenario:</strong> {{ loaded_case_name }}<br><strong>Clinical Expectation:</strong> {{ loaded_case_desc | safe }}
-              {% else %}
-                Click <strong>Load Random Case</strong> to load a random clinical profile and see expected model behaviors.
-              {% endif %}
-            </div>
-          </div>
 
-          <!-- Submit Button Block -->
-          <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.8rem; padding: 1rem 0;">
-            <button type="submit" class="btn-predict" id="predictBtn" style="width: 100%; justify-content: center;">
-              <span style="font-size:1.1rem;">⚡</span>
-              Predict Risk &amp; Explain with SHAP
-            </button>
-            <span class="submit-note" style="text-align: center;">⏱ ~30–60 seconds · SHAP analysis runs on all 3 models</span>
+              <!-- Heart Disease Card -->
+              <div class="disease-card" id="card-heart">
+                <div class="disease-card-header">
+                  <span class="disease-name">Heart Disease</span>
+                  <span class="risk-label {% if results %}{{ results['Heart Disease'].level }}{% endif %}"
+                    id="label-heart">
+                    {% if results %}{{ results['Heart Disease'].label }}{% else %}—{% endif %}
+                  </span>
+                </div>
+                <div class="risk-readout">
+                  <span class="risk-number" id="prob-heart">
+                    {% if results %}{{ "%.3f"|format(results['Heart Disease'].prob) }}{% else %}—{% endif %}
+                  </span>
+                  <div class="risk-bar-track">
+                    <div class="risk-bar-fill {% if results %}{{ results['Heart Disease'].level }}{% endif %}"
+                      id="bar-heart"
+                      style="{% if results %}width: {{ results['Heart Disease'].prob_pct }}%;{% endif %}"></div>
+                  </div>
+                  <span class="risk-percent" id="pct-heart">
+                    {% if results %}{{ results['Heart Disease'].prob_pct }}%{% else %}—{% endif %}
+                  </span>
+                </div>
+                <div class="threshold-note" id="thresh-heart">
+                  {% if results %}Threshold: {{ results['Heart Disease'].thresh }} · Alert if &ge; {{ results['Heart Disease'].thresh_pct }}%{% endif %}
+                </div>
+                <div class="shap-section">
+                  <div class="shap-label">Key drivers</div>
+                  <div class="shap-list" id="shap-heart">
+                    {% if results %}
+                    {% for fname, fval, fpct in results['Heart Disease'].pos %}
+                    <div class="shap-item">
+                      <span class="shap-feature">{{ fname.split(' — ')[0].replace('_', ' ') }}</span>
+                      <span class="shap-value pos">+{{ '%.3f'|format(fval) }}</span>
+                    </div>
+                    {% endfor %}
+                    {% for fname, fval, fpct in results['Heart Disease'].neg %}
+                    <div class="shap-item">
+                      <span class="shap-feature">{{ fname.split(' — ')[0].replace('_', ' ') }}</span>
+                      <span class="shap-value neg">{{ '%.3f'|format(fval) }}</span>
+                    </div>
+                    {% endfor %}
+                    {% endif %}
+                  </div>
+                </div>
+              </div>
+
+              <!-- Liver Disease Card -->
+              <div class="disease-card" id="card-liver">
+                <div class="disease-card-header">
+                  <span class="disease-name">Liver Disease</span>
+                  <span class="risk-label {% if results %}{{ results['Liver Disease'].level }}{% endif %}"
+                    id="label-liver">
+                    {% if results %}{{ results['Liver Disease'].label }}{% else %}—{% endif %}
+                  </span>
+                </div>
+                <div class="risk-readout">
+                  <span class="risk-number" id="prob-liver">
+                    {% if results %}{{ "%.3f"|format(results['Liver Disease'].prob) }}{% else %}—{% endif %}
+                  </span>
+                  <div class="risk-bar-track">
+                    <div class="risk-bar-fill {% if results %}{{ results['Liver Disease'].level }}{% endif %}"
+                      id="bar-liver"
+                      style="{% if results %}width: {{ results['Liver Disease'].prob_pct }}%;{% endif %}"></div>
+                  </div>
+                  <span class="risk-percent" id="pct-liver">
+                    {% if results %}{{ results['Liver Disease'].prob_pct }}%{% else %}—{% endif %}
+                  </span>
+                </div>
+                <div class="threshold-note" id="thresh-liver">
+                  {% if results %}Threshold: {{ results['Liver Disease'].thresh }} · Alert if &ge; {{ results['Liver Disease'].thresh_pct }}%{% endif %}
+                </div>
+                <div class="shap-section">
+                  <div class="shap-label">Key drivers</div>
+                  <div class="shap-list" id="shap-liver">
+                    {% if results %}
+                    {% for fname, fval, fpct in results['Liver Disease'].pos %}
+                    <div class="shap-item">
+                      <span class="shap-feature">{{ fname.split(' — ')[0].replace('_', ' ') }}</span>
+                      <span class="shap-value pos">+{{ '%.3f'|format(fval) }}</span>
+                    </div>
+                    {% endfor %}
+                    {% for fname, fval, fpct in results['Liver Disease'].neg %}
+                    <div class="shap-item">
+                      <span class="shap-feature">{{ fname.split(' — ')[0].replace('_', ' ') }}</span>
+                      <span class="shap-value neg">{{ '%.3f'|format(fval) }}</span>
+                    </div>
+                    {% endfor %}
+                    {% endif %}
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+            <!-- SHAP Waterfall Plots -->
+            <div class="shap-plots">
+              <div class="shap-plots-label">SHAP Feature Contribution Analysis</div>
+              <div class="shap-plots-grid">
+                <figure class="shap-figure">
+                  <figcaption>Diabetes</figcaption>
+                  <img id="shap-img-diabetes"
+                    src="{% if results %}data:image/png;base64,{{ results.Diabetes.plot }}{% endif %}"
+                    alt="SHAP waterfall for Diabetes">
+                </figure>
+                <figure class="shap-figure">
+                  <figcaption>Heart Disease</figcaption>
+                  <img id="shap-img-heart"
+                    src="{% if results %}data:image/png;base64,{{ results['Heart Disease'].plot }}{% endif %}"
+                    alt="SHAP waterfall for Heart Disease">
+                </figure>
+                <figure class="shap-figure">
+                  <figcaption>Liver Disease</figcaption>
+                  <img id="shap-img-liver"
+                    src="{% if results %}data:image/png;base64,{{ results['Liver Disease'].plot }}{% endif %}"
+                    alt="SHAP waterfall for Liver Disease">
+                </figure>
+              </div>
+            </div>
           </div>
 
         </div>
-      </form>
-    </div><!-- form-card -->
 
-
-    <!-- ── Results ──────────────────────────────────────────────────────────── -->
-    {% if results %}
-    <div id="resultsSection">
-      <div class="results-header">
-        <h2>Risk Assessment Results</h2>
-        <div class="hr-line"></div>
-        <span style="font-size:0.72rem; color:var(--muted); white-space:nowrap;">
-          Tuned thresholds: Diabetes 35% · Heart 15% · Liver 10%
-        </span>
       </div>
 
-      <div class="results-grid">
-        {% set icons  = {'Diabetes':'🩸','Heart Disease':'❤️','Liver Disease':'🫀'} %}
-        {% set d_bg   = {'Diabetes':'rgba(239,68,68,0.08)',
-                          'Heart Disease':'rgba(239,68,68,0.08)',
-                          'Liver Disease':'rgba(245,158,11,0.08)'} %}
-
-        {% for disease, r in results.items() %}
-        <div class="glass result-card">
-
-          <!-- Disease header -->
-          <div class="d-header">
-            <div class="d-name">
-              <div class="d-icon" style="background:{{ d_bg[disease] }};">
-                {{ icons[disease] }}
-              </div>
-              {{ disease }}
-            </div>
-            <span class="risk-pill"
-              style="background:{{ r.color }}18; color:{{ r.color }};
-                     border:1px solid {{ r.color }}44;">
-              {{ r.label }}
-            </span>
+      <!-- Relocated Info and Stats Panel (at the bottom of this tab) -->
+      <div class="info-panel">
+        <div class="info-badge">⚡ XGBoost + SHAP Explainability</div>
+        <p class="info-desc">
+          Enter patient vitals and lab values to receive AI-powered risk scores for Diabetes, Heart Disease, and Liver
+          Disease — with full SHAP explainability.
+        </p>
+        <div class="info-stats">
+          <div class="info-stat">
+            <div class="info-stat-val">ROC 0.91</div>
+            <div class="info-stat-label">Diabetes</div>
           </div>
-
-          <div class="c-divider"></div>
-
-          <!-- Gauge + stats -->
-          <div class="gauge-row">
-            <div class="gauge-svg-wrap">
-              <svg class="gauge-svg" viewBox="0 0 100 100">
-                <circle class="gauge-bg" cx="50" cy="50" r="42"/>
-                <circle class="gauge-arc"
-                  cx="50" cy="50" r="42"
-                  stroke="{{ r.color }}"
-                  stroke-dasharray="{{ r.circ }}"
-                  stroke-dashoffset="{{ r.offset }}"
-                  style="filter:drop-shadow(0 0 7px {{ r.color }}99);"
-                />
-                <text text-anchor="middle" dominant-baseline="central" x="50" y="47">
-                  <tspan font-size="13" font-weight="800" fill="{{ r.color }}"
-                    font-family="Inter">{{ r.prob_pct }}%</tspan>
-                </text>
-                <text text-anchor="middle" x="50" y="59"
-                  font-size="5.5" fill="#64748b" font-family="Inter">RISK SCORE</text>
-              </svg>
-            </div>
-            <div class="gauge-info">
-              <div class="prob-big" style="color:{{ r.color }};">{{ r.prob_pct }}%</div>
-              <div class="prob-sub">Predicted probability</div>
-              <div class="thresh-chip">
-                Alert threshold: {{ r.thresh_pct }}% ·
-                {% if r.prob >= r.thresh %}⚠ Above threshold{% else %}✓ Below threshold{% endif %}
-              </div>
-            </div>
+          <div class="info-stat">
+            <div class="info-stat-val">ROC 0.84</div>
+            <div class="info-stat-label">Heart Disease</div>
           </div>
+          <div class="info-stat">
+            <div class="info-stat-val">ROC 0.75</div>
+            <div class="info-stat-label">Liver Disease</div>
+          </div>
+          <div class="info-stat">
+            <div class="info-stat-val">9,254</div>
+            <div class="info-stat-label">NHANES Records</div>
+          </div>
+        </div>
+      </div>
 
-          <div class="c-divider"></div>
+    </div>
 
-          <!-- Top factors -->
-          <div class="factors-block">
-            <h4>🔍 Key Contributing Factors</h4>
+    <!-- ── TAB 2: PERFORMANCE & METRICS ────────────────────────────────── -->
+    <div id="tab-content-metrics" class="tab-content">
+      <section class="metrics-section" id="metrics">
+        <div class="section-header">
+          <span class="section-eyebrow">Validation</span>
+          <h2 class="section-title">Model Performance</h2>
+          <p class="section-desc">
+            All models evaluated on a stratified holdout of 9,254 NHANES records.
+            Thresholds are clinically motivated, not default 0.5.
+          </p>
+        </div>
 
-            {% if r.pos %}
-            <div class="factor-group-label">
-              <span style="color:var(--red);">▲</span> Factors <strong>increasing</strong> risk
-            </div>
-            {% for fname, fval, fpct in r.pos %}
-            <div class="factor-row">
-              <span class="f-arrow" style="color:var(--red);">▲</span>
-              <span class="f-name" title="{{ fname }}">{{ fname }}</span>
-              <div class="f-track">
-                <div class="f-bar" style="width:{{ fpct }}%; background:var(--red);"></div>
-              </div>
-              <span class="f-val" style="color:var(--red);">+{{ '%.3f'|format(fval) }}</span>
-            </div>
+        <table class="metrics-table">
+          <thead>
+            <tr>
+              <th>Disease</th>
+              <th>ROC-AUC</th>
+              <th>PR-AUC</th>
+              <th>Brier Skill ↑</th>
+              <th>Threshold</th>
+              <th>Sensitivity</th>
+              <th>Specificity</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% if metrics %}
+            {% for disease, m in metrics.items() %}
+            <tr>
+              <td class="td-disease">{{ disease.replace('_', ' ') }}</td>
+              <td class="td-mono">{{ "%.3f"|format(m.roc_auc) }}</td>
+              <td class="td-mono">{{ "%.3f"|format(m.pr_auc) }}</td>
+              <td class="td-mono">{{ "%.4f"|format(m.brier_skill) }}</td>
+              <td class="td-mono">{{ "%.3f"|format(m.threshold.value) }}</td>
+              <td class="td-mono">{{ "%.3f"|format(m.threshold.sensitivity) }}</td>
+              <td class="td-mono">{{ "%.3f"|format(m.threshold.specificity) }}</td>
+            </tr>
             {% endfor %}
             {% endif %}
+          </tbody>
+        </table>
 
-            {% if r.neg %}
-            <div class="factor-group-label" style="margin-top:0.55rem;">
-              <span style="color:var(--green);">▼</span> Factors <strong>decreasing</strong> risk
-            </div>
-            {% for fname, fval, fpct in r.neg %}
-            <div class="factor-row">
-              <span class="f-arrow" style="color:var(--green);">▼</span>
-              <span class="f-name" title="{{ fname }}">{{ fname }}</span>
-              <div class="f-track">
-                <div class="f-bar" style="width:{{ fpct }}%; background:var(--green);"></div>
-              </div>
-              <span class="f-val" style="color:var(--green);">{{ '%.3f'|format(fval) }}</span>
-            </div>
-            {% endfor %}
-            {% endif %}
+        <div class="calibration-grid">
+          <figure class="calib-figure">
+            <img src="/calibration/Diabetes" alt="Diabetes calibration curve">
+            <figcaption>Diabetes — Reliability Diagram</figcaption>
+          </figure>
+          <figure class="calib-figure">
+            <img src="/calibration/Heart_Disease" alt="Heart Disease calibration curve">
+            <figcaption>Heart Disease — Reliability Diagram</figcaption>
+          </figure>
+          <figure class="calib-figure">
+            <img src="/calibration/Liver_Disease" alt="Liver Disease calibration curve">
+            <figcaption>Liver Disease — Reliability Diagram</figcaption>
+          </figure>
+        </div>
+      </section>
+    </div>
 
-            {% if not r.pos and not r.neg %}
-            <p style="font-size:0.78rem; color:var(--muted);">No significant SHAP contributors detected.</p>
-            {% endif %}
-          </div>
+    <!-- ── TAB 3: API REFERENCE ────────────────────────────────────────── -->
+    <div id="tab-content-api" class="tab-content">
+      <section class="api-section" id="api">
+        <h2 class="section-title" style="margin-bottom: 8px;">API Reference</h2>
+        <p class="section-desc">Expose risk predictions and explainability programmatically via our unified REST API
+          endpoint.</p>
 
-          <div class="c-divider"></div>
+        <div class="api-endpoint">
+          <span class="api-method">POST</span>
+          <span>/api/predict</span>
+        </div>
 
-          <!-- SHAP waterfall plot -->
-          <div class="shap-block">
-            <h4>📊 SHAP Waterfall Analysis</h4>
-            <p style="font-size:0.68rem; color:var(--muted); margin-bottom:0.65rem;">
-              Red bars push risk higher · Blue bars pull risk lower · Base value = population average
-            </p>
-            <div class="shap-img-wrap">
-              <img class="shap-img"
-                src="data:image/png;base64,{{ r.plot }}"
-                alt="SHAP Waterfall for {{ disease }}"
-                loading="lazy" />
-            </div>
-          </div>
+        <h3 style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">Example Curl
+          Request</h3>
+        <pre class="api-code">curl -X POST http://127.0.0.1:5000/api/predict \
+  -H "Content-Type: application/json" \
+  -d '{
+    "age": 55, "fasting_glucose": 145.0, "waist_cm": 98.0,
+    "bmi": 30.2, "systolic_bp": 138.0, "acr": 42.0,
+    "sex": 1, "total_cholesterol": 210.0, "urine_albumin": 18.0,
+    "alt": 45.0, "ast": 38.0, "ggt": 52.0,
+    "alp": 88.0, "total_bilirubin": 0.9, "serum_albumin": 4.0
+  }'</pre>
 
-        </div><!-- result-card -->
-        {% endfor %}
-      </div><!-- results-grid -->
+        <h3 style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">Request Fields
+          Specification</h3>
+        <table class="metrics-table" style="margin-bottom: 24px;">
+          <thead>
+            <tr>
+              <th>Field</th>
+              <th>Type</th>
+              <th>Valid Range</th>
+              <th>Unit</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="td-mono">age</td>
+              <td>int</td>
+              <td class="td-mono">18 – 85</td>
+              <td>years</td>
+            </tr>
+            <tr>
+              <td class="td-mono">fasting_glucose</td>
+              <td>float</td>
+              <td class="td-mono">50 – 500</td>
+              <td>mg/dL</td>
+            </tr>
+            <tr>
+              <td class="td-mono">waist_cm</td>
+              <td>float</td>
+              <td class="td-mono">50 – 200</td>
+              <td>cm</td>
+            </tr>
+            <tr>
+              <td class="td-mono">bmi</td>
+              <td>float</td>
+              <td class="td-mono">10 – 70</td>
+              <td>kg/m²</td>
+            </tr>
+            <tr>
+              <td class="td-mono">systolic_bp</td>
+              <td>float</td>
+              <td class="td-mono">70 – 220</td>
+              <td>mmHg</td>
+            </tr>
+            <tr>
+              <td class="td-mono">acr</td>
+              <td>float</td>
+              <td class="td-mono">0 – 5000</td>
+              <td>mg/g</td>
+            </tr>
+            <tr>
+              <td class="td-mono">sex</td>
+              <td>int</td>
+              <td class="td-mono">1 = Male, 2 = Female</td>
+              <td>enum</td>
+            </tr>
+            <tr>
+              <td class="td-mono">total_cholesterol</td>
+              <td>float</td>
+              <td class="td-mono">50 – 500</td>
+              <td>mg/dL</td>
+            </tr>
+            <tr>
+              <td class="td-mono">urine_albumin</td>
+              <td>float</td>
+              <td class="td-mono">0 – 500</td>
+              <td>µg/mL</td>
+            </tr>
+            <tr>
+              <td class="td-mono">alt</td>
+              <td>float</td>
+              <td class="td-mono">0 – 500</td>
+              <td>U/L</td>
+            </tr>
+            <tr>
+              <td class="td-mono">ast</td>
+              <td>float</td>
+              <td class="td-mono">0 – 500</td>
+              <td>U/L</td>
+            </tr>
+            <tr>
+              <td class="td-mono">ggt</td>
+              <td>float</td>
+              <td class="td-mono">0 – 500</td>
+              <td>U/L</td>
+            </tr>
+            <tr>
+              <td class="td-mono">alp</td>
+              <td>float</td>
+              <td class="td-mono">0 – 500</td>
+              <td>U/L</td>
+            </tr>
+            <tr>
+              <td class="td-mono">total_bilirubin</td>
+              <td>float</td>
+              <td class="td-mono">0 – 30</td>
+              <td>mg/dL</td>
+            </tr>
+            <tr>
+              <td class="td-mono">serum_albumin</td>
+              <td>float</td>
+              <td class="td-mono">1 – 6</td>
+              <td>g/dL</td>
+            </tr>
+          </tbody>
+        </table>
 
-      <p class="disclaimer">
-        ⚕️ <strong>MedScan AI</strong> is for educational and research purposes only.<br>
-        Predictions are based on population-level NHANES data and XGBoost models with SHAP explainability.<br>
-        This tool is <strong>not a substitute</strong> for professional medical diagnosis or treatment.
-      </p>
-    </div><!-- resultsSection -->
-    {% endif %}
+        <h3 style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">Sample Response
+          (200 OK)</h3>
+        <pre class="api-code">{
+  "predictions": {
+    "Diabetes": {
+      "risk_probability": 0.312,
+      "risk_percent": 31.2,
+      "risk_label": "High Risk",
+      "threshold_used": 0.098,
+      "threshold_strategy": "Sensitivity &ge; 0.85 (missing a diabetic is clinically costly)",
+      "top_features": [
+        {"feature": "fasting_glucose", "shap_value": 0.142, "direction": "increases_risk"},
+        {"feature": "bmi",             "shap_value": 0.089, "direction": "increases_risk"},
+        {"feature": "age",             "shap_value": -0.031,"direction": "decreases_risk"}
+      ]
+    }
+  }
+}</pre>
+      </section>
+    </div>
 
+    <!-- 7. Footer -->
+    <footer class="site-footer">
+      <span>MedScan AI v1.1.0 · Educational prototype · Not for clinical use</span>
+      <span>
+        <a href="https://github.com/darknight0847" target="_blank">GitHub</a> ·
+        <a href="/MODEL_CARD.md" target="_blank">Model Card</a>
+      </span>
+    </footer>
   </main>
 
   <script>
-    /* ── Real-time range validation ─────────────────────────────────────── */
-    function checkRange(input, min, max, _) {
-      const val  = parseFloat(input.value);
-      const hint = document.getElementById(input.id + '-hint');
-      if (isNaN(val) || input.value === '') {
-        input.className = ''; if (hint) hint.className = 'range-hint'; return;
-      }
-      const inRange  = val >= min && val <= max;
-      const nearLow  = val < min  && val >= min * 0.88;
-      const nearHigh = val > max  && val <= max * 1.12;
+    /* ── Tab controller ─────────────────────────────────────────────────── */
+    function switchTab(btn, tabId) {
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.header-nav a').forEach(a => a.classList.remove('active'));
 
-      if (inRange) {
-        setClass(input, hint, 'ok', '✓ Normal range');
-      } else if (nearLow || nearHigh) {
-        setClass(input, hint, 'warn', '⚠ Borderline range');
-      } else {
-        setClass(input, hint, 'bad', '✕ Outside normal range');
+      const content = document.getElementById('tab-content-tabId'.replace('tabId', tabId));
+      if (content) content.classList.add('active');
+
+      btn.classList.add('active');
+    }
+
+    function switchTabById(tabId) {
+      const link = document.getElementById('header-link-' + tabId);
+      if (link) {
+        switchTab(link, tabId);
       }
     }
 
-    function checkRangeMax(input, max, _) {
-      const val  = parseFloat(input.value);
-      const hint = document.getElementById(input.id + '-hint');
-      if (isNaN(val) || input.value === '') {
-        input.className = ''; if (hint) hint.className = 'range-hint'; return;
-      }
-      if (val <= max) {
-        setClass(input, hint, 'ok', '✓ Normal range');
-      } else if (val <= max * 1.15) {
-        setClass(input, hint, 'warn', '⚠ Slightly elevated');
+    /* ── Ideal ranges lookup for real-time validation ───────────────────── */
+    const idealRanges = {
+      age: [18, 65],
+      fasting_glucose: [70, 99],
+      waist_cm: [50, 94],
+      bmi: [18.5, 24.9],
+      systolic_bp: [90, 120],
+      acr: [0, 30],
+      total_cholesterol: [50, 200],
+      urine_albumin: [0, 30],
+      alt: [7, 56],
+      ast: [10, 40],
+      ggt: [8, 61],
+      alp: [44, 147],
+      total_bilirubin: [0.1, 1.2],
+      serum_albumin: [3.5, 5.0]
+    };
+
+    function validateField(input) {
+      const val = parseFloat(input.value);
+      input.classList.remove('valid', 'warning', 'danger');
+      if (isNaN(val) || input.value === '') return;
+
+      const minLimit = parseFloat(input.min);
+      const maxLimit = parseFloat(input.max);
+      const range = idealRanges[input.id];
+
+      if (val < minLimit || val > maxLimit) {
+        input.classList.add('danger');
+      } else if (range && val >= range[0] && val <= range[1]) {
+        input.classList.add('valid');
       } else {
-        setClass(input, hint, 'bad', '✕ Elevated — above normal');
+        input.classList.add('warning');
       }
     }
 
-    function setClass(input, hint, cls, msg) {
-      input.className = cls;
-      if (!hint) return;
-      hint.className = 'range-hint ' + cls;
-      /* preserve the original static hint text from HTML on first run */
-      if (!hint.dataset.orig) hint.dataset.orig = hint.textContent;
-      hint.textContent = msg + '  (' + hint.dataset.orig.trim() + ')';
+    function triggerValidation() {
+      document.querySelectorAll('.form-grid input').forEach(input => {
+        validateField(input);
+      });
     }
 
     /* ── Case Studies Data (20 Distinct Scenarios) ─────────────────────────── */
@@ -1088,41 +1736,195 @@
       if (!caseData) return;
 
       const cleanedName = caseData.name.replace(/^Case \d+:\s*/, '');
-      document.getElementById('caseStudyExpectation').innerHTML = 
-        `<strong>Loaded Scenario:</strong> ${cleanedName}<br><strong>Clinical Expectation:</strong> ${caseData.desc}`;
+      const expectationEl = document.getElementById('caseStudyExpectation');
+      if (expectationEl) {
+        expectationEl.innerHTML = `<strong>Loaded:</strong> ${cleanedName} &middot; <span class="scenario-text">${caseData.desc}</span>`;
+      }
 
-      // Save state to hidden inputs for form submission persistence
       document.getElementById('loadedCaseName').value = cleanedName;
       document.getElementById('loadedCaseDesc').value = caseData.desc;
 
-      for (const [id, value] of Object.entries(caseData.data)) {
-        const el = document.getElementById(id);
+      const keyMap = {
+        gender: 'sex',
+        waist: 'waist_cm',
+        sys_bp: 'systolic_bp',
+        cholesterol: 'total_cholesterol',
+        albumin: 'urine_albumin',
+        glucose: 'fasting_glucose',
+        bilirubin: 'total_bilirubin'
+      };
+
+      for (const [key, value] of Object.entries(caseData.data)) {
+        const targetId = keyMap[key] || key;
+        const el = document.getElementById(targetId);
         if (el) {
           el.value = value;
-          // Dispatch input event to trigger color-range validation script
-          if (el.tagName === 'INPUT' && (el.oninput || el.getAttribute('oninput'))) {
-            el.dispatchEvent(new Event('input'));
-          } else if (el.tagName === 'SELECT') {
-            el.value = value;
-          }
         }
+      }
+      triggerValidation();
+    }
+
+    /* ── Fetch API and Render Results ───────────────────────────────────── */
+    document.getElementById('risk-form').addEventListener('submit', async function (e) {
+      e.preventDefault();
+
+      const btn = document.querySelector('.btn-primary');
+      const loader = document.getElementById('loading-indicator');
+
+      btn.textContent = 'Assessing...';
+      btn.disabled = true;
+      loader.style.display = 'block';
+
+      // Collect form values for API
+      const payload = {
+        age: Number(document.getElementById('age').value),
+        fasting_glucose: Number(document.getElementById('fasting_glucose').value),
+        waist_cm: Number(document.getElementById('waist_cm').value),
+        bmi: Number(document.getElementById('bmi').value),
+        systolic_bp: Number(document.getElementById('systolic_bp').value),
+        acr: Number(document.getElementById('acr').value),
+        sex: Number(document.getElementById('sex').value),
+        total_cholesterol: Number(document.getElementById('total_cholesterol').value),
+        urine_albumin: Number(document.getElementById('urine_albumin').value),
+        alt: Number(document.getElementById('alt').value),
+        ast: Number(document.getElementById('ast').value),
+        ggt: Number(document.getElementById('ggt').value),
+        alp: Number(document.getElementById('alp').value),
+        total_bilirubin: Number(document.getElementById('total_bilirubin').value),
+        serum_albumin: Number(document.getElementById('serum_albumin').value),
+      };
+
+      // Collect form values in URLSearchParams format for background fetch to /
+      const formParams = new URLSearchParams();
+      formParams.append('age', document.getElementById('age').value);
+      formParams.append('gender', document.getElementById('sex').value);
+      formParams.append('glucose', document.getElementById('fasting_glucose').value);
+      formParams.append('bmi', document.getElementById('bmi').value);
+      formParams.append('waist', document.getElementById('waist_cm').value);
+      formParams.append('sys_bp', document.getElementById('systolic_bp').value);
+      formParams.append('acr', document.getElementById('acr').value);
+      formParams.append('cholesterol', document.getElementById('total_cholesterol').value);
+      formParams.append('albumin', document.getElementById('urine_albumin').value);
+      formParams.append('alt', document.getElementById('alt').value);
+      formParams.append('ast', document.getElementById('ast').value);
+      formParams.append('ggt', document.getElementById('ggt').value);
+      formParams.append('alp', document.getElementById('alp').value);
+      formParams.append('bilirubin', document.getElementById('total_bilirubin').value);
+      formParams.append('serum_albumin', document.getElementById('serum_albumin').value);
+
+      const caseName = document.getElementById('loadedCaseName').value;
+      const caseDesc = document.getElementById('loadedCaseDesc').value;
+      if (caseName) formParams.append('loaded_case_name', caseName);
+      if (caseDesc) formParams.append('loaded_case_desc', caseDesc);
+
+      try {
+        // 1. Fetch JSON prediction response
+        const res = await fetch('/api/predict', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          alert(data.error || 'Prediction failed');
+          return;
+        }
+
+        renderResults(data);
+
+        // 2. Fetch SHAP waterfall plots from / route in background
+        try {
+          const htmlRes = await fetch('/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: formParams.toString()
+          });
+          if (htmlRes.ok) {
+            const htmlText = await htmlRes.text();
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(htmlText, 'text/html');
+
+            const diabetesImg = doc.querySelector('img[alt*="Diabetes"]');
+            const heartImg = doc.querySelector('img[alt*="Heart Disease"]');
+            const liverImg = doc.querySelector('img[alt*="Liver Disease"]');
+
+            if (diabetesImg) document.getElementById('shap-img-diabetes').src = diabetesImg.src;
+            if (heartImg) document.getElementById('shap-img-heart').src = heartImg.src;
+            if (liverImg) document.getElementById('shap-img-liver').src = liverImg.src;
+          }
+        } catch (shapErr) {
+          console.error('Error fetching SHAP waterfall plots:', shapErr);
+        }
+
+      } catch (err) {
+        alert('Network error — please try again');
+      } finally {
+        btn.textContent = 'Assess Risk →';
+        btn.disabled = false;
+        loader.style.display = 'none';
+      }
+    });
+
+    function renderResults(data) {
+      const placeholder = document.getElementById('results-placeholder');
+      if (placeholder) placeholder.style.display = 'none';
+
+      const panel = document.getElementById('results-panel');
+      panel.style.display = 'block';
+
+      const now = new Date();
+      document.getElementById('results-timestamp').textContent =
+        now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+      const diseaseMap = {
+        'Diabetes': { card: 'diabetes', probEl: 'prob-diabetes', barEl: 'bar-diabetes', pctEl: 'pct-diabetes', labelEl: 'label-diabetes', threshEl: 'thresh-diabetes', shapEl: 'shap-diabetes' },
+        'Heart_Disease': { card: 'heart', probEl: 'prob-heart', barEl: 'bar-heart', pctEl: 'pct-heart', labelEl: 'label-heart', threshEl: 'thresh-heart', shapEl: 'shap-heart' },
+        'Liver_Disease': { card: 'liver', probEl: 'prob-liver', barEl: 'bar-liver', pctEl: 'pct-liver', labelEl: 'label-liver', threshEl: 'thresh-liver', shapEl: 'shap-liver' },
+      };
+
+      for (const [disease, ids] of Object.entries(diseaseMap)) {
+        const pred = data.predictions[disease];
+        if (!pred) continue;
+
+        const prob = pred.risk_probability;
+        const label = pred.risk_label;
+        const cls = label === 'High Risk' || label === 'Critical Risk' ? 'high' : (label === 'Borderline' || label === 'Moderate Risk' ? 'border' : 'low');
+        const displayLabel = label.toUpperCase();
+
+        document.getElementById(ids.probEl).textContent = prob.toFixed(3);
+        document.getElementById(ids.pctEl).textContent = pred.risk_percent.toFixed(1) + '%';
+        document.getElementById(ids.labelEl).textContent = displayLabel;
+        document.getElementById(ids.labelEl).className = 'risk-label ' + cls;
+
+        const bar = document.getElementById(ids.barEl);
+        bar.style.width = Math.min(pred.risk_percent, 100) + '%';
+        bar.className = 'risk-bar-fill ' + cls;
+
+        document.getElementById(ids.threshEl).textContent =
+          `Threshold: ${pred.threshold_used} · ${pred.threshold_strategy}`;
+
+        // Render SHAP inline drivers
+        const shapContainer = document.getElementById(ids.shapEl);
+        shapContainer.innerHTML = '';
+        (pred.top_features || []).forEach(f => {
+          const isPos = f.direction === 'increases_risk';
+          const item = document.createElement('div');
+          item.className = 'shap-item';
+          item.innerHTML = `
+            <span class="shap-feature">${f.feature.replace(/_/g, ' ')}</span>
+            <span class="shap-value ${isPos ? 'pos' : 'neg'}">${isPos ? '+' : ''}${f.shap_value.toFixed(3)}</span>
+          `;
+          shapContainer.appendChild(item);
+        });
       }
     }
 
-    /* ── Loading overlay ─────────────────────────────────────────────────── */
-    function showLoading() {
-      document.getElementById('loadingOverlay').classList.add('active');
-    }
-
-
-
-    /* ── Auto-scroll to results ──────────────────────────────────────────── */
-    {% if results %}
-    window.addEventListener('load', () => {
-      const el = document.getElementById('resultsSection');
-      if (el) setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'start' }), 200);
+    // Run field validations on document load
+    window.addEventListener('DOMContentLoaded', () => {
+      triggerValidation();
     });
-    {% endif %}
   </script>
 </body>
+
 </html>

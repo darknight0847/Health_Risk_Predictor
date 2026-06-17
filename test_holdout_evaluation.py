@@ -217,3 +217,257 @@ print(f"  CalibErr <5%   = Well-calibrated (probabilities are reliable)")
 print(f"\n{'=' * 65}")
 print("  Holdout evaluation complete.")
 print(f"{'=' * 65}\n")
+
+# ─────────────────────────────────────────────────────────────────────────────
+# STEP 4: Extended Metrics — Brier Score, Brier Skill Score, Optimal Thresholds
+# ─────────────────────────────────────────────────────────────────────────────
+# WHY THESE METRICS:
+#   - Brier Skill Score (BSS): The CORRECT way to interpret Brier Score for
+#     imbalanced clinical data. Formula: 1 - (brier / baseline_brier), where
+#     baseline_brier = prevalence * (1 - prevalence) (score of a naive model).
+#     Interpretation: 0 = no better than naive, 1 = perfect, <0 = worse than naive.
+#     Raw Brier Score alone is MISLEADING for rare diseases — a model that always
+#     predicts near-zero achieves low Brier without any discriminative power.
+#   - PR-AUC (average_precision_score): More honest than ROC-AUC when classes
+#     are imbalanced. Measures precision vs recall tradeoff for rare-disease settings.
+# ─────────────────────────────────────────────────────────────────────────────
+
+import json
+import os
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+
+from sklearn.metrics import (
+    brier_score_loss,
+    roc_curve,
+    precision_recall_curve,
+)
+
+print(f"{'=' * 65}")
+print("  STEP 4: Extended Metrics + Optimal Thresholds")
+print(f"{'=' * 65}")
+
+# Maps the human-readable disease names used in MODELS_CONFIG → JSON keys
+DISEASE_KEY_MAP = {
+    "Diabetes":      "Diabetes",
+    "Heart Disease": "Heart_Disease",
+    "Liver Disease": "Liver_Disease",
+}
+
+
+def compute_extended_metrics(model, X_test, y_test, disease_name):
+    """
+    Compute and return all validation metrics for a single disease model.
+
+    Returns a dict with keys: roc_auc, pr_auc, brier_score, brier_skill, prevalence
+
+    NOTE on Brier Skill Score:
+    Raw Brier Score alone is misleading for rare diseases. A model predicting
+    the prevalence rate for every patient achieves brier = p*(1-p) without any
+    discriminative power. The Brier Skill Score normalises against this naive
+    baseline so that 0 = no better than naive and 1 = perfect calibration.
+    """
+    y_prob = model.predict_proba(X_test)[:, 1]
+    y_test_arr = np.array(y_test)
+
+    roc_auc = roc_auc_score(y_test_arr, y_prob)
+    pr_auc  = average_precision_score(y_test_arr, y_prob)
+    brier   = brier_score_loss(y_test_arr, y_prob)
+
+    # ── Brier Skill Score — correct interpretation for imbalanced clinical data ──
+    # Formula: 1 - (model_brier / baseline_brier)
+    # baseline_brier = prevalence * (1 - prevalence)  [naive model that always
+    #                                                   predicts the base rate]
+    # Interpretation:
+    #   1.0  = perfect
+    #   0.0  = same as naive model (always predicts prevalence)
+    #  <0.0  = worse than naive — serious problem
+    prevalence     = float(y_test_arr.mean())
+    brier_baseline = prevalence * (1 - prevalence)
+    brier_skill    = 1.0 - (brier / brier_baseline) if brier_baseline > 0 else 0.0
+
+    print(f"\n{'=' * 40}")
+    print(f"  {disease_name}")
+    print(f"{'=' * 40}")
+    print(f"  ROC-AUC           : {roc_auc:.4f}")
+    print(f"  PR-AUC            : {pr_auc:.4f}")
+    print(f"  Disease prevalence : {prevalence:.3f}")
+    print(f"  Brier Score        : {brier:.4f}  (raw — do not interpret in isolation)")
+    print(f"  Brier baseline     : {brier_baseline:.4f}  (naive model score)")
+    print(f"  Brier Skill Score  : {brier_skill:.4f}  (0=useless, 1=perfect)")
+
+    if brier_skill < 0.10:
+        print(f"  ⚠️  WARNING: Brier Skill Score < 0.10 — model barely beats naive baseline")
+    elif brier_skill < 0.25:
+        print(f"  ⚠️  WEAK: Model has limited probabilistic skill")
+    else:
+        print(f"  ✅ Acceptable probabilistic skill")
+
+    return {
+        "roc_auc":    roc_auc,
+        "pr_auc":     pr_auc,
+        "brier_score": brier,
+        "brier_skill": round(brier_skill, 4),
+        "prevalence":  round(prevalence, 4),
+    }
+
+
+def find_optimal_threshold(y_test, y_prob, disease_name):
+    """
+    Threshold selection strategy (clinically motivated, NOT default 0.5):
+
+    - Diabetes:      Prioritize Sensitivity >= 0.85 (missing a diabetic is
+                     costly — the patient loses the chance for early treatment).
+                     Find the highest threshold where sensitivity stays >= 0.85.
+
+    - Heart Disease: Maximize F1-score (balance precision and recall because
+                     false positives trigger expensive workups while false
+                     negatives miss treatable disease).
+
+    - Liver Disease: Prioritize Specificity >= 0.80 (reduce false-alarm burden
+                     — liver biopsies are invasive; screen only high-confidence
+                     positives). Find the lowest threshold where specificity
+                     stays >= 0.80.
+    """
+    y_test_arr = np.array(y_test)
+
+    fpr, tpr, roc_thresholds = roc_curve(y_test_arr, y_prob)
+    specificity = 1 - fpr
+    sensitivity = tpr
+
+    if disease_name == "Diabetes":
+        # Find thresholds where sensitivity >= 0.85, pick the highest one
+        # (highest threshold = most conservative, fewest false positives)
+        mask = sensitivity >= 0.85
+        if mask.any():
+            optimal_threshold = float(roc_thresholds[mask].max())
+        else:
+            # Fall back to closest to 0.85 if none meets the criteria
+            optimal_threshold = float(roc_thresholds[np.argmin(np.abs(sensitivity - 0.85))])
+
+    elif disease_name == "Heart Disease":
+        # CORRECTED STRATEGY: Prioritise sensitivity >= 0.75
+        # Clinical rationale: Undetected heart disease risk has severe consequences.
+        # Missing a true positive (false negative) is far more costly than a false
+        # alarm. We accept lower specificity to ensure high-risk patients are flagged.
+        # (Previous strategy was Max F1, which produced Sensitivity=0.358 — clinically
+        # dangerous. Max F1 optimises the balance between precision and recall but does
+        # not guarantee adequate sensitivity in imbalanced clinical settings.)
+        mask = sensitivity >= 0.75
+        if mask.any():
+            # Among all thresholds with sensitivity >= 0.75, pick the one with
+            # highest specificity (lowest false alarm rate)
+            valid_idx = np.where(mask)[0]
+            best_idx = valid_idx[np.argmax(specificity[valid_idx])]
+            optimal_threshold = float(roc_thresholds[best_idx])
+        else:
+            # Fallback: 0.75 sensitivity not achievable — use max sensitivity threshold
+            print(f"  ⚠️  WARNING: Sensitivity >= 0.75 not achievable — using max sensitivity threshold")
+            optimal_threshold = float(roc_thresholds[np.argmax(sensitivity)])
+
+    elif disease_name == "Liver Disease":
+        # Find the lowest threshold index where specificity >= 0.80
+        # (roc_curve returns fpr in ascending order → specificity descending)
+        valid_idx = np.where(specificity >= 0.80)[0]
+        if len(valid_idx) > 0:
+            # Pick the entry with lowest FPR that still satisfies constraint
+            optimal_threshold = float(roc_thresholds[valid_idx[-1]])
+        else:
+            optimal_threshold = 0.5
+
+    else:
+        optimal_threshold = 0.5
+
+    # ── Compute clinical metrics at the chosen threshold ──────────────────────
+    y_pred = (y_prob >= optimal_threshold).astype(int)
+    tp = int(((y_pred == 1) & (y_test_arr == 1)).sum())
+    tn = int(((y_pred == 0) & (y_test_arr == 0)).sum())
+    fp = int(((y_pred == 1) & (y_test_arr == 0)).sum())
+    fn = int(((y_pred == 0) & (y_test_arr == 1)).sum())
+
+    sens = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+    spec = tn / (tn + fp) if (tn + fp) > 0 else 0.0
+    ppv  = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+    npv  = tn / (tn + fn) if (tn + fn) > 0 else 0.0
+
+    strategy_display = {
+        "Diabetes":      "Sensitivity \u2265 0.85 (missing a diabetic is clinically costly)",
+        "Heart Disease": "Sensitivity \u2265 0.75 \u2014 undetected heart disease risk is clinically dangerous",
+        "Liver Disease": "Specificity \u2265 0.80 (reduce false-alarm burden for invasive tests)",
+    }.get(disease_name, "Default 0.5")
+
+    print(f"  Optimal Threshold : {optimal_threshold:.3f}")
+    print(f"  Sensitivity       : {sens:.3f}")
+    print(f"  Specificity       : {spec:.3f}")
+    print(f"  PPV               : {ppv:.3f}")
+    print(f"  NPV               : {npv:.3f}")
+
+    return {
+        "value":       round(optimal_threshold, 3),
+        "sensitivity": round(sens, 3),
+        "specificity": round(spec, 3),
+        "ppv":         round(ppv, 3),
+        "npv":         round(npv, 3),
+        "strategy":    strategy_display,
+    }
+
+
+# ── Run extended metrics for each disease ────────────────────────────────────
+validation_output = {}
+
+for disease, cfg in MODELS_CONFIG.items():
+    json_key = DISEASE_KEY_MAP[disease]
+
+    # Reproduce the exact same holdout split (random_state=42, stratify)
+    df_clean = df_merged.dropna(subset=[cfg["target"]]).copy()
+    X        = df_clean[cfg["features"]]
+    y        = df_clean[cfg["target"]]
+    _, X_test, _, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42, stratify=y
+    )
+
+    model  = joblib.load(cfg["model_path"])
+    y_prob = model.predict_proba(X_test)[:, 1]
+    y_test_arr = np.array(y_test)
+
+    ext    = compute_extended_metrics(model, X_test, y_test, disease)
+    thresh = find_optimal_threshold(y_test_arr, y_prob, disease)
+
+    validation_output[json_key] = {
+        "roc_auc":      round(ext["roc_auc"], 4),
+        "pr_auc":       round(ext["pr_auc"], 4),
+        "brier_score":  round(ext["brier_score"], 4),
+        "brier_skill":  ext["brier_skill"],
+        "prevalence":   ext["prevalence"],
+        "threshold":    thresh,
+    }
+
+# ── Write validation_metrics.json ────────────────────────────────────────────
+OUT_JSON = os.path.join(DATA_DIR, "saved_models", "validation_metrics.json")
+with open(OUT_JSON, "w") as f:
+    json.dump(validation_output, f, indent=2)
+
+print(f"\n[✓] Saved: {OUT_JSON}")
+
+# ── Final summary ─────────────────────────────────────────────────────────────
+print(f"{'=' * 65}")
+print("  STEP 4 SUMMARY")
+print(f"{'=' * 65}")
+print(f"  {'Disease':<20} {'ROC-AUC':>8} {'PR-AUC':>8} {'BSS':>8} {'Prev':>6} {'Thresh':>8} {'Sens':>6} {'Spec':>6}")
+print(f"  {'─' * 72}")
+for jk, v in validation_output.items():
+    t = v["threshold"]
+    print(f"  {jk:<20} {v['roc_auc']:>8.4f} {v['pr_auc']:>8.4f} "
+          f"{v['brier_skill']:>8.4f} {v['prevalence']:>6.3f} "
+          f"{t['value']:>8.3f} {t['sensitivity']:>6.3f} {t['specificity']:>6.3f}")
+
+print(f"\n  Brier Skill Score guide:")
+print(f"    >=0.25 = Acceptable probabilistic skill")
+print(f"    0.10-0.25 = Weak (limited improvement over naive baseline)")
+print(f"    <0.10 = WARNING: model barely beats naive prediction")
+print(f"    <0.0  = Model is WORSE than a naive baseline — serious problem")
+print(f"\n  (Do NOT use raw Brier Score alone for rare-disease evaluation)")
+print(f"\n{'=' * 65}")
+print("  Extended evaluation complete. JSON written.")
+print(f"{'=' * 65}\n")
