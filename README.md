@@ -1,3 +1,11 @@
+---
+title: Health Risk Predictor
+emoji: 🏥
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+pinned: false
+---
 # MedScan AI — Multi-Disease Health Risk Predictor
 
 
